@@ -1,0 +1,132 @@
+#!/bin/bash
+
+# Claude Session Sync - Migrate and sync local sessions to global tracker
+
+echo "🔄 Claude Session Sync"
+echo "━━━━━━━━━━━━━━━━━━━━━"
+echo ""
+
+GLOBAL_SESSIONS_DIR="$HOME/.claude/sessions"
+GLOBAL_TRACKER="$GLOBAL_SESSIONS_DIR/.current-sessions"
+PROJECTS_SYNCED=0
+SESSIONS_IMPORTED=0
+
+# Ensure global directory exists
+mkdir -p "$GLOBAL_SESSIONS_DIR"
+
+# Initialize global tracker if it doesn't exist
+if [ ! -f "$GLOBAL_TRACKER" ]; then
+    cat > "$GLOBAL_TRACKER" << 'EOF'
+# Multi-Agent Session Management
+# Last Updated: $(date -u +%Y-%m-%dT%H:%M:%SZ)
+
+## Active Sessions
+
+## Session History
+# Completed sessions are moved here with completion timestamp
+EOF
+fi
+
+# Function to import sessions from a project
+import_project_sessions() {
+    local project_path="$1"
+    local project_name=$(basename "$project_path")
+    
+    echo "📁 Processing: $project_path"
+    
+    # Check for local .claude/sessions directory
+    if [ -d "$project_path/.claude/sessions" ]; then
+        local local_sessions_dir="$project_path/.claude/sessions"
+        
+        # Copy all session files to global directory
+        for session_file in "$local_sessions_dir"/*.md; do
+            if [ -f "$session_file" ] && [ "$(basename "$session_file")" != "*.md" ]; then
+                local filename=$(basename "$session_file")
+                
+                # Skip if already exists in global
+                if [ ! -f "$GLOBAL_SESSIONS_DIR/$filename" ]; then
+                    cp "$session_file" "$GLOBAL_SESSIONS_DIR/"
+                    echo "   ✅ Imported: $filename"
+                    ((SESSIONS_IMPORTED++))
+                else
+                    echo "   ⏭️  Already exists: $filename"
+                fi
+            fi
+        done
+        
+        # Handle .current-session file (singular)
+        if [ -f "$local_sessions_dir/.current-session" ]; then
+            echo "   📝 Found .current-session file"
+            
+            # Read all sessions from the file
+            while IFS= read -r session_name; do
+                if [ -n "$session_name" ] && [ -f "$local_sessions_dir/$session_name" ]; then
+                    # Add to global tracker
+                    echo "   🔗 Linking: $session_name to $project_path"
+                    
+                    # Check if this session is already tracked
+                    if ! grep -q "$session_name" "$GLOBAL_TRACKER"; then
+                        # Add to session history
+                        sed -i '' "/## Session History/i\\
+### Agent: claude-project-$project_name\\
+- Session: $session_name\\
+- Project: $project_path\\
+- Started: Unknown (imported)\\
+- Last Update: $(date -u +%Y-%m-%dT%H:%M:%SZ)\\
+- Status: imported\\
+- Tasks: Imported from local project\\
+\\
+" "$GLOBAL_TRACKER"
+                    fi
+                fi
+            done < "$local_sessions_dir/.current-session"
+            
+            # Rename to match global convention
+            if [ ! -f "$local_sessions_dir/.current-sessions" ]; then
+                mv "$local_sessions_dir/.current-session" "$local_sessions_dir/.current-sessions"
+                echo "   ✅ Renamed .current-session to .current-sessions"
+            fi
+        fi
+        
+        ((PROJECTS_SYNCED++))
+    else
+        echo "   ℹ️  No .claude/sessions directory found"
+    fi
+    
+    echo ""
+}
+
+# Find and process all projects with .claude directories
+echo "🔍 Searching for projects with .claude directories..."
+echo ""
+
+# Start with current directory
+if [ -d ".claude/sessions" ]; then
+    import_project_sessions "$(pwd)"
+fi
+
+# Search for other projects (limit depth to avoid long searches)
+find ~ -name ".claude" -type d -maxdepth 6 2>/dev/null | while read -r claude_dir; do
+    project_dir=$(dirname "$claude_dir")
+    
+    # Skip if it's the global .claude
+    if [ "$claude_dir" != "$HOME/.claude" ]; then
+        import_project_sessions "$project_dir"
+    fi
+done
+
+# Update timestamp in global tracker
+sed -i '' "s/^# Last Updated:.*/# Last Updated: $(date -u +%Y-%m-%dT%H:%M:%SZ)/" "$GLOBAL_TRACKER"
+
+echo "📊 Sync Summary"
+echo "━━━━━━━━━━━━━━━"
+echo "   Projects synced: $PROJECTS_SYNCED"
+echo "   Sessions imported: $SESSIONS_IMPORTED"
+echo "   Global sessions: $(ls -1 "$GLOBAL_SESSIONS_DIR"/*.md 2>/dev/null | wc -l)"
+echo ""
+echo "✅ Sync complete!"
+echo ""
+echo "💡 Next steps:"
+echo "   1. Use 'claude-session list' to see all sessions"
+echo "   2. Use 'claude-session switch <session-name>' to resume work"
+echo "   3. Local sessions are now globally accessible"

@@ -1,0 +1,227 @@
+#!/bin/bash
+
+# Claude Session Management CLI
+source ~/.claude/hooks/session-manager.sh 2>/dev/null || {
+    echo "Error: Session manager not found"
+    exit 1
+}
+
+print_usage() {
+    cat << EOF
+Claude Session Management
+
+Usage: claude-session <command> [options]
+
+Commands:
+  start <description>    Start a new session with description
+  update <message>       Update current session with a message
+  status                 Show current session status
+  list                   List all active sessions
+  complete               Mark current session as complete
+  switch <session-file>  Switch to a different session
+  
+Options:
+  --agent <id>          Set agent ID (default: claude-code-main)
+  
+Examples:
+  claude-session start "implementing authentication"
+  claude-session update "Added OAuth2 integration"
+  claude-session status
+  claude-session complete
+EOF
+}
+
+# Parse arguments
+COMMAND="$1"
+shift
+
+case "$COMMAND" in
+    start)
+        DESCRIPTION="$*"
+        if [[ -z "$DESCRIPTION" ]]; then
+            echo "Error: Please provide a session description"
+            exit 1
+        fi
+        
+        SESSION_FILE=$(generate_session_name "$DESCRIPTION")
+        AGENT_ID=$(get_agent_id)
+        PROJECT=$(get_project_path)
+        BRANCH=$(get_git_branch)
+        
+        # Create session file
+        update_session_file "$SESSION_FILE" "# Session: $DESCRIPTION
+**Date**: $(date +%Y-%m-%d)
+**Time**: $(date +%H:%M)
+**Agent**: $AGENT_ID
+**Project**: $PROJECT
+**Branch**: $BRANCH
+
+## Summary
+$DESCRIPTION
+
+## Tasks
+- [ ] Initial task
+
+## Current Work
+Starting new session for: $DESCRIPTION"
+        
+        # Update current sessions
+        update_current_session "$SESSION_FILE" "active" "$DESCRIPTION"
+        
+        echo "✅ Started session: $SESSION_FILE"
+        echo "   Agent: $AGENT_ID"
+        echo "   Project: $PROJECT"
+        echo "   Branch: $BRANCH"
+        ;;
+        
+    update)
+        MESSAGE="$*"
+        if [[ -z "$MESSAGE" ]]; then
+            echo "Error: Please provide an update message"
+            exit 1
+        fi
+        
+        AGENT_ID=$(get_agent_id)
+        PROJECT_PATH=$(pwd)
+        # Find the most recent session for this agent and project
+        CURRENT_SESSION=$(awk -v agent="$AGENT_ID" -v project="$PROJECT_PATH" '
+            /^### Agent:/ && $0 ~ agent { in_agent=1; session="" }
+            in_agent && /^- Session:/ { gsub(/^- Session: /, ""); session=$0 }
+            in_agent && /^- Project:/ && $0 ~ project { found_session=session }
+            in_agent && /^$/ { in_agent=0 }
+            END { print found_session }
+        ' "$CURRENT_SESSIONS_FILE")
+        
+        if [[ -z "$CURRENT_SESSION" ]]; then
+            echo "Error: No active session found for agent $AGENT_ID"
+            echo "Start a new session with: claude-session start <description>"
+            exit 1
+        fi
+        
+        # Append to session file
+        update_session_file "$CURRENT_SESSION" "$MESSAGE" true
+        
+        # Update last modified time
+        TASKS=$(grep -A1 "### Agent: $AGENT_ID" "$CURRENT_SESSIONS_FILE" | grep "Tasks:" | cut -d' ' -f2-)
+        update_current_session "$CURRENT_SESSION" "active" "$TASKS"
+        
+        echo "✅ Updated session: $CURRENT_SESSION"
+        ;;
+        
+    status)
+        AGENT_ID=$(get_agent_id)
+        PROJECT_PATH=$(pwd)
+        CURRENT_BRANCH=$(get_git_branch)
+        
+        echo "Agent: $AGENT_ID"
+        echo "Project: $PROJECT_PATH"
+        echo "Branch: $CURRENT_BRANCH"
+        echo ""
+        
+        if [[ -f "$CURRENT_SESSIONS_FILE" ]]; then
+            # Find sessions for current agent, project, and branch
+            awk -v agent="$AGENT_ID" -v project="$PROJECT_PATH" -v branch="$CURRENT_BRANCH" '
+                /^### Agent:/ && $0 ~ agent { in_agent=1; print_block=0 }
+                in_agent && /^- Project:/ && $0 ~ project { has_project=1 }
+                in_agent && /^- Branch:/ && $0 ~ branch { if(has_project) print_block=1 }
+                in_agent && print_block { print }
+                /^$/ || /^### Agent:/ || /^## Session History/ { 
+                    in_agent=0; has_project=0; print_block=0 
+                }
+            ' "$CURRENT_SESSIONS_FILE"
+        else
+            echo "No active sessions found"
+        fi
+        ;;
+        
+    list)
+        if [[ -f "$CURRENT_SESSIONS_FILE" ]]; then
+            echo "Active Sessions:"
+            echo "───────────────"
+            grep -E "^### Agent:|^- Session:|^- Status:" "$CURRENT_SESSIONS_FILE" | \
+            while IFS= read -r line; do
+                if [[ "$line" =~ ^###\ Agent: ]]; then
+                    echo ""
+                    echo "$line"
+                else
+                    echo "  $line"
+                fi
+            done
+        else
+            echo "No sessions found"
+        fi
+        ;;
+        
+    complete)
+        AGENT_ID=$(get_agent_id)
+        PROJECT_PATH=$(pwd)
+        CURRENT_BRANCH=$(get_git_branch)
+        
+        # Get the active session for this agent, project, and branch
+        CURRENT_SESSION=""
+        CURRENT_TASKS=""
+        
+        # Read the file and find matching session
+        while IFS= read -r line; do
+            if [[ "$line" =~ ^###\ Agent:\ $AGENT_ID ]]; then
+                # Found our agent, check next 8 lines (added branch)
+                session_found=false
+                branch_matches=false
+                for i in {1..8}; do
+                    IFS= read -r subline
+                    if [[ "$subline" =~ ^-\ Session:\ (.+)$ ]]; then
+                        temp_session="${BASH_REMATCH[1]}"
+                    elif [[ "$subline" =~ ^-\ Project:\ $PROJECT_PATH ]]; then
+                        session_found=true
+                    elif [[ "$subline" =~ ^-\ Branch:\ $CURRENT_BRANCH ]]; then
+                        branch_matches=true
+                    elif [[ "$subline" =~ ^-\ Status:\ active ]] && [[ "$session_found" == "true" ]] && [[ "$branch_matches" == "true" ]]; then
+                        CURRENT_SESSION="$temp_session"
+                    elif [[ "$subline" =~ ^-\ Tasks:\ (.+)$ ]]; then
+                        CURRENT_TASKS="${BASH_REMATCH[1]}"
+                    fi
+                done
+                if [[ -n "$CURRENT_SESSION" ]]; then
+                    break
+                fi
+            fi
+        done < "$CURRENT_SESSIONS_FILE"
+        
+        if [[ -z "$CURRENT_SESSION" ]]; then
+            echo "Error: No active session found for agent $AGENT_ID in project $PROJECT_PATH on branch $CURRENT_BRANCH"
+            exit 1
+        fi
+        
+        # Mark as completed
+        update_current_session "$CURRENT_SESSION" "completed" "$CURRENT_TASKS - COMPLETED"
+        
+        # Add completion note to session file
+        update_session_file "$CURRENT_SESSION" "## Session Completed
+Completed at: $(date -u +%Y-%m-%dT%H:%M:%SZ)" true
+        
+        echo "✅ Completed session: $CURRENT_SESSION"
+        ;;
+        
+    switch)
+        SESSION_FILE="$1"
+        if [[ -z "$SESSION_FILE" ]]; then
+            echo "Error: Please provide a session file to switch to"
+            exit 1
+        fi
+        
+        if [[ ! -f "$SESSIONS_DIR/$SESSION_FILE" ]]; then
+            echo "Error: Session file not found: $SESSION_FILE"
+            exit 1
+        fi
+        
+        AGENT_ID=$(get_agent_id)
+        update_current_session "$SESSION_FILE" "active" "Resumed session"
+        
+        echo "✅ Switched to session: $SESSION_FILE"
+        ;;
+        
+    *)
+        print_usage
+        exit 1
+        ;;
+esac

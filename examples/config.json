@@ -1,0 +1,27 @@
+{
+  "session_manager": {
+    "auto_create": true,
+    "update_interval": 300,
+    "session_timeout": 14400,
+    "branch_tracking": true,
+    "git_safety": {
+      "enabled": true,
+      "block_patterns": ["git add -A", "git add --all", "git add ."],
+      "require_status_check": true
+    },
+    "build_validation": {
+      "enabled": false,
+      "on_push": true,
+      "commands": {
+        "npm": "npm run build",
+        "yarn": "yarn build",
+        "pnpm": "pnpm build"
+      }
+    },
+    "session_format": {
+      "include_branch": true,
+      "include_git_status": true,
+      "auto_update_interval": 15
+    }
+  }
+}
