@@ -4,13 +4,13 @@ A powerful session management system for Claude Code that tracks development ses
 
 ## Features
 
-- 🔄 **Multi-Agent Support**: Track sessions across multiple Claude chats
-- 🌿 **Branch-Aware**: Sessions are tracked per git branch
-- 📁 **Project Isolation**: Each project maintains its own sessions
-- 🔒 **Git Safety**: Prevents unsafe `git add -A` operations
-- 🏗️ **Build Validation**: Optional build checks before git push
-- 📊 **Session History**: Complete history of all development sessions
-- 🔍 **Easy Discovery**: Find and continue previous sessions
+- **Multi-Agent Support**: Track sessions across multiple Claude chats
+- **Branch-Aware**: Sessions are tracked per git branch
+- **Project Isolation**: Each project maintains its own sessions
+- **Git Safety**: Prevents unsafe `git add -A` operations
+- **Build Validation**: Optional build checks before git push
+- **Session History**: Complete history of all development sessions
+- **Easy Discovery**: Find and continue previous sessions
 
 ## Installation
 
