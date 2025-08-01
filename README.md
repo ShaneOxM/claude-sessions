@@ -171,4 +171,4 @@ MIT License - see LICENSE file for details
 
 ## Credits
 
-Created by [Your Name] to enhance the Claude Code development experience.
+Created by ShaneOxM to enhance the Claude Code development experience ❤️
