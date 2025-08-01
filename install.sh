@@ -184,7 +184,7 @@ echo "   2. Start a session: claude-session start \"Working on new feature\""
 echo "   3. Check status: claude-session status"
 echo "   4. In Claude: /continue"
 echo ""
-echo "📚 Full documentation: https://github.com/yourusername/claude-session-manager"
+echo "📚 Full documentation: https://github.com/ShaneOxM/claude-sessions/README.md"
 echo ""
 
 # Prompt to view backup location
