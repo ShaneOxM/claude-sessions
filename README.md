@@ -167,7 +167,7 @@ Contributions are welcome! Please:
 
 ## License
 
-MIT License - see LICENSE file for details
+MIT License - see [LICENSE](https://github.com/ShaneOxM/claude-sessions/blob/main/LICENSE) file for details
 
 ## Credits
 
