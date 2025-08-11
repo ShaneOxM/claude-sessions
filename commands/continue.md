@@ -4,128 +4,158 @@ argument-hint: [session-name-or-id]
 
 # Continue Session with Project Context
 
-Continue a previous session or list available sessions for the current project.
+Continue a previous session using the interactive session picker.
 
 ## Usage
 ```bash
-/continue                    # List sessions for current project
+/continue                    # Open interactive session picker
 /continue auth-refactor      # Continue specific session
 /continue 2025-07-25-2340   # Continue by partial ID
 ```
 
 ## Instructions
 
-1. Check if session name provided:
-   ```bash
-   if [ -z "$SESSION_NAME" ]; then
-       SHOW_LIST=true
-   fi
-   ```
-
-2. Get current project path:
+1. Get current project path:
    ```bash
    PROJECT_PATH=$(pwd)
    PROJECT_NAME=$(basename "$PROJECT_PATH")
    ```
 
-3. If listing sessions:
+2. If no session name provided, list available sessions:
    ```bash
-   echo "📚 Available Sessions for $PROJECT_NAME"
-   echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-   echo ""
-   
-   # Check global sessions for this project
-   SESSIONS_FOUND=0
-   
-   # From global tracker
-   grep -B1 -A5 "Project: $PROJECT_PATH" ~/.claude/sessions/.current-sessions 2>/dev/null | \
-   grep "Session:" | sed 's/.*Session: //' | while read -r session; do
-       if [ -f "$HOME/.claude/sessions/$session" ]; then
-           # Extract summary from session file
-           SUMMARY=$(grep -m1 "^##" "$HOME/.claude/sessions/$session" | sed 's/^## //')
-           DATE=$(echo "$session" | grep -o '^[0-9-]*')
-           echo "📄 $session"
-           echo "   Date: $DATE"
-           echo "   Summary: $SUMMARY"
-           echo ""
-           ((SESSIONS_FOUND++))
-       fi
-   done
-   
-   # From local project sessions
-   if [ -d ".claude/sessions" ]; then
-       for session in .claude/sessions/*.md; do
-           if [ -f "$session" ]; then
-               SESSION_NAME=$(basename "$session")
-               SUMMARY=$(grep -m1 "^##" "$session" | sed 's/^## //')
-               DATE=$(echo "$SESSION_NAME" | grep -o '^[0-9-]*')
-               echo "📄 $SESSION_NAME (local)"
-               echo "   Date: $DATE"
-               echo "   Summary: $SUMMARY"
-               echo ""
-               ((SESSIONS_FOUND++))
+   if [ -z "$SESSION_NAME" ]; then
+       echo "📂 Available Sessions"
+       echo "━━━━━━━━━━━━━━━━━━"
+       echo
+       
+       # List active sessions with numbers
+       SESSION_COUNT=0
+       declare -a SESSION_FILES
+       
+       # Active sessions for current project
+       echo "🟢 Active Sessions in Current Project"
+       grep -B1 -A5 "Project: $PROJECT_PATH" ~/.claude/sessions/.current-sessions 2>/dev/null | \
+       grep "Session:" | sed 's/.*Session: //' | while read -r session; do
+           if [ -f "$HOME/.claude/sessions/$session" ]; then
+               SESSION_COUNT=$((SESSION_COUNT + 1))
+               SESSION_FILES[$SESSION_COUNT]="$session"
+               
+               # Get session details
+               BRANCH=$(grep "^\*\*Branch\*\*:" "$HOME/.claude/sessions/$session" | cut -d':' -f2- | xargs)
+               SUMMARY=$(grep -m1 "^## Summary" -A1 "$HOME/.claude/sessions/$session" | tail -1)
+               DATE=$(echo "$session" | grep -o '^[0-9-]*')
+               
+               echo "  [$SESSION_COUNT] $session"
+               echo "      📅 Date: $DATE"
+               echo "      🌿 Branch: $BRANCH"
+               echo "      📝 Summary: $SUMMARY"
+               echo
            fi
        done
-   fi
-   
-   if [ $SESSIONS_FOUND -eq 0 ]; then
-       echo "No sessions found for this project."
-       echo ""
-       echo "💡 Tips:"
-       echo "   • Run 'claude-session-sync' to import local sessions"
-       echo "   • Use 'claude-session start' to begin a new session"
-   else
-       echo "💡 To continue a session:"
-       echo "   /continue <session-name>"
+       
+       # All other active sessions
+       echo "📁 Other Active Sessions"
+       grep -A1 "### Agent:" ~/.claude/sessions/.current-sessions | \
+       grep "Session:" | sed 's/.*Session: //' | while read -r session; do
+           if [ -f "$HOME/.claude/sessions/$session" ] && \
+              ! grep -q "$session" <<< "${SESSION_FILES[@]}"; then
+               SESSION_COUNT=$((SESSION_COUNT + 1))
+               SESSION_FILES[$SESSION_COUNT]="$session"
+               
+               PROJECT=$(grep "^\*\*Project\*\*:" "$HOME/.claude/sessions/$session" | cut -d':' -f2- | xargs)
+               DATE=$(echo "$session" | grep -o '^[0-9-]*')
+               
+               echo "  [$SESSION_COUNT] $session"
+               echo "      📅 Date: $DATE"
+               echo "      📁 Project: $(basename "$PROJECT")"
+               echo
+           fi
+       done
+       
+       if [ $SESSION_COUNT -eq 0 ]; then
+           echo "No sessions found."
+           echo
+           echo "💡 Start a new session with:"
+           echo "   claude-sessions start \"description\""
+       else
+           echo "━━━━━━━━━━━━━━━━━━━━━━━━"
+           echo "💡 To continue a session:"
+           echo "   /continue <session-name>"
+           echo "   /continue <number>"
+           echo
+           echo "Example: /continue 1"
+       fi
+       exit 0
    fi
    ```
 
-4. If continuing specific session:
+3. Otherwise, try to find specific session:
    ```bash
-   # Try to find the session
-   SESSION_FILE=""
-   
-   # Check global sessions
-   if [ -f "$HOME/.claude/sessions/$SESSION_NAME" ]; then
-       SESSION_FILE="$HOME/.claude/sessions/$SESSION_NAME"
-   elif [ -f "$HOME/.claude/sessions/${SESSION_NAME}.md" ]; then
-       SESSION_FILE="$HOME/.claude/sessions/${SESSION_NAME}.md"
+   # Check if it's a number (session index)
+   if [[ "$SESSION_NAME" =~ ^[0-9]+$ ]]; then
+       # Get session by index
+       SESSION_INDEX="$SESSION_NAME"
+       SESSION_FILE=""
+       COUNT=0
+       
+       # Find the nth session
+       for session in $(grep -A1 "### Agent:" ~/.claude/sessions/.current-sessions | \
+                       grep "Session:" | sed 's/.*Session: //'); do
+           if [ -f "$HOME/.claude/sessions/$session" ]; then
+               COUNT=$((COUNT + 1))
+               if [ $COUNT -eq $SESSION_INDEX ]; then
+                   SESSION_FILE="$HOME/.claude/sessions/$session"
+                   break
+               fi
+           fi
+       done
    else
-       # Try partial match
-       MATCHES=$(ls -1 "$HOME/.claude/sessions/" | grep -i "$SESSION_NAME" | head -1)
-       if [ -n "$MATCHES" ]; then
-           SESSION_FILE="$HOME/.claude/sessions/$MATCHES"
-       fi
-   fi
-   
-   # Check local sessions
-   if [ -z "$SESSION_FILE" ] && [ -d ".claude/sessions" ]; then
-       if [ -f ".claude/sessions/$SESSION_NAME" ]; then
-           SESSION_FILE=".claude/sessions/$SESSION_NAME"
-       elif [ -f ".claude/sessions/${SESSION_NAME}.md" ]; then
-           SESSION_FILE=".claude/sessions/${SESSION_NAME}.md"
+       # Try exact match first
+       if [ -f "$HOME/.claude/sessions/$SESSION_NAME" ]; then
+           SESSION_FILE="$HOME/.claude/sessions/$SESSION_NAME"
+       elif [ -f "$HOME/.claude/sessions/${SESSION_NAME}.md" ]; then
+           SESSION_FILE="$HOME/.claude/sessions/${SESSION_NAME}.md"
        else
            # Try partial match
-           MATCHES=$(ls -1 .claude/sessions/ | grep -i "$SESSION_NAME" | head -1)
+           MATCHES=$(ls -1 "$HOME/.claude/sessions/" | grep -i "$SESSION_NAME" | head -1)
            if [ -n "$MATCHES" ]; then
-               SESSION_FILE=".claude/sessions/$MATCHES"
+               SESSION_FILE="$HOME/.claude/sessions/$MATCHES"
            fi
        fi
    fi
    
-   if [ -n "$SESSION_FILE" ]; then
-       echo "📂 Loading session: $(basename "$SESSION_FILE")"
-       echo ""
-       cat "$SESSION_FILE"
-       echo ""
-       echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-       echo "✅ Session loaded. Continue where you left off!"
+   if [ -n "$SESSION_FILE" ] && [ -f "$SESSION_FILE" ]; then
+       SESSION_NAME=$(basename "$SESSION_FILE")
+       echo "📂 Loading session: $SESSION_NAME"
+       echo
        
-       # Update global tracker
-       claude-session switch "$(basename "$SESSION_FILE")"
+       # Switch to session
+       claude-sessions switch "$SESSION_NAME"
+       
+       # Show session metadata
+       echo "📋 Session Details"
+       echo "━━━━━━━━━━━━━━━"
+       grep -E "^\*\*(Date|Time|Project|Branch)\*\*:" "$SESSION_FILE" | \
+           sed 's/\*\*\(.*\)\*\*:/  \1:/' 
+       echo
+       
+       # Show summary and recent work
+       echo "📝 Summary"
+       echo "━━━━━━━━"
+       sed -n '/^## Summary/,/^##/p' "$SESSION_FILE" | sed '/^##/d' | head -5
+       echo
+       
+       echo "🔄 Recent Updates"
+       echo "━━━━━━━━━━━━━"
+       grep "^## Update:" "$SESSION_FILE" | tail -3 | sed 's/^## Update:/  📍/'
+       echo
+       
+       echo "✅ Session loaded! Continue where you left off."
+       echo
+       echo "💡 Use 'claude-sessions update \"message\"' to add updates"
    else
        echo "❌ Session not found: $SESSION_NAME"
-       echo ""
+       echo
        echo "Use '/continue' without arguments to see available sessions."
    fi
    ```

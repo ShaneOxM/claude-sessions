@@ -44,13 +44,13 @@ echo "   ✓ tool-pre-bash.sh"
 
 # Install CLI tools
 echo "🛠️  Installing CLI tools..."
-cp "$SCRIPT_DIR/bin/claude-session" "$CLAUDE_DIR/bin/"
-chmod +x "$CLAUDE_DIR/bin/claude-session"
-echo "   ✓ claude-session"
+cp "$SCRIPT_DIR/bin/claude-sessions" "$CLAUDE_DIR/bin/"
+chmod +x "$CLAUDE_DIR/bin/claude-sessions"
+echo "   ✓ claude-sessions"
 
-cp "$SCRIPT_DIR/bin/claude-session-sync" "$CLAUDE_DIR/bin/"
-chmod +x "$CLAUDE_DIR/bin/claude-session-sync"
-echo "   ✓ claude-session-sync"
+cp "$SCRIPT_DIR/bin/claude-sessions-sync" "$CLAUDE_DIR/bin/"
+chmod +x "$CLAUDE_DIR/bin/claude-sessions-sync"
+echo "   ✓ claude-sessions-sync"
 
 # Install commands
 echo "📝 Installing Claude commands..."
@@ -170,9 +170,9 @@ EOF
 fi
 
 # Import existing local sessions
-if command -v claude-session-sync >/dev/null 2>&1; then
+if command -v claude-sessions-sync >/dev/null 2>&1; then
     echo "🔄 Importing existing sessions..."
-    claude-session-sync
+    claude-sessions-sync
 fi
 
 echo ""
@@ -180,11 +180,11 @@ echo "✅ Installation complete!"
 echo ""
 echo "🎯 Quick Start:"
 echo "   1. Restart your terminal or run: source $SHELL_RC"
-echo "   2. Start a session: claude-session start \"Working on new feature\""
-echo "   3. Check status: claude-session status"
+echo "   2. Start a session: claude-sessions start \"Working on new feature\""
+echo "   3. Check status: claude-sessions status"
 echo "   4. In Claude: /continue"
 echo ""
-echo "📚 Full documentation: https://github.com/ShaneOxM/claude-sessions/README.md"
+echo "📚 Full documentation: https://github.com/yourusername/claude-session-manager"
 echo ""
 
 # Prompt to view backup location

@@ -68,22 +68,36 @@ EOF
     local temp_file="${CURRENT_SESSIONS_FILE}.tmp"
     > "$temp_file"  # Clear temp file
     
-    # First pass: remove ALL existing entries for this agent/project combo
-    awk -v agent="$agent_id" -v project="$project_path" '
-        BEGIN { skip = 0 }
+    # First pass: remove existing entries for this agent/project/branch combo
+    awk -v agent="$agent_id" -v project="$project_path" -v branch="$branch" '
+        BEGIN { skip = 0; in_block = 0 }
         /^### Agent:/ { 
             if (skip > 0) skip = 0
             if ($0 ~ agent) {
-                agent_block = 1
-                block_start = NR
+                in_block = 1
+                has_project = 0
+                has_branch = 0
+            } else {
+                in_block = 0
             }
         }
-        agent_block && /^- Project:/ && $0 ~ project {
-            skip = 7  # Skip this entire block
-            agent_block = 0
+        in_block && /^- Project:/ { 
+            if ($0 ~ project) {
+                has_project = 1
+            }
         }
-        agent_block && /^$|^### Agent:|^## Session History/ {
-            agent_block = 0
+        in_block && /^- Branch:/ {
+            if ($0 ~ branch) {
+                has_branch = 1
+                if (has_project) {
+                    skip = 4  # Skip rest of this block
+                }
+            }
+        }
+        in_block && /^$|^### Agent:|^## Session History/ {
+            in_block = 0
+            has_project = 0
+            has_branch = 0
         }
         skip > 0 { skip--; next }
         { print }
@@ -175,14 +189,41 @@ init_session() {
     local project_path=$(get_project_path)
     local project_name=$(basename "$project_path")
     
-    # Check if we have an active session for this project
+    # Check if we have an active session for this project and branch
     if [[ -f "$CURRENT_SESSIONS_FILE" ]]; then
-        local current_session=$(grep -A1 "### Agent: $agent_id" "$CURRENT_SESSIONS_FILE" 2>/dev/null | grep "Session:" | cut -d' ' -f2-)
-        local current_project=$(grep -A2 "### Agent: $agent_id" "$CURRENT_SESSIONS_FILE" 2>/dev/null | grep "Project:" | cut -d' ' -f2-)
+        local branch=$(get_git_branch)
+        local active_session=$(awk -v agent="$agent_id" -v project="$project_path" -v branch="$branch" '
+            BEGIN { found = 0 }
+            /^### Agent:/ { 
+                if ($0 ~ agent) {
+                    in_block = 1
+                    has_project = 0
+                    has_branch = 0
+                    session = ""
+                } else {
+                    in_block = 0
+                }
+            }
+            in_block && /^- Session:/ { session = $3 }
+            in_block && /^- Project:/ { if ($0 ~ project) has_project = 1 }
+            in_block && /^- Branch:/ { if ($0 ~ branch) has_branch = 1 }
+            in_block && /^- Status:/ { 
+                if ($3 == "active" && has_project && has_branch && session != "") {
+                    print session
+                    exit
+                }
+            }
+            in_block && /^$|^### Agent:|^## Session History/ {
+                in_block = 0
+                has_project = 0
+                has_branch = 0
+                session = ""
+            }
+        ' "$CURRENT_SESSIONS_FILE")
         
-        if [[ -n "$current_session" ]] && [[ "$current_project" == "$project_path" ]]; then
+        if [[ -n "$active_session" ]]; then
             # Resume existing session
-            echo "📂 Resuming session: $current_session" >&2
+            echo "📂 Resuming session: $active_session" >&2
             return 0
         fi
     fi

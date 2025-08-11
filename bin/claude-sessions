@@ -8,9 +8,9 @@ source ~/.claude/hooks/session-manager.sh 2>/dev/null || {
 
 print_usage() {
     cat << EOF
-Claude Session Management
+Claude Sessions Management
 
-Usage: claude-session <command> [options]
+Usage: claude-sessions <command> [options]
 
 Commands:
   start <description>    Start a new session with description
@@ -24,10 +24,10 @@ Options:
   --agent <id>          Set agent ID (default: claude-code-main)
   
 Examples:
-  claude-session start "implementing authentication"
-  claude-session update "Added OAuth2 integration"
-  claude-session status
-  claude-session complete
+  claude-sessions start "implementing authentication"
+  claude-sessions update "Added OAuth2 integration"
+  claude-sessions status
+  claude-sessions complete
 EOF
 }
 
@@ -68,7 +68,12 @@ Starting new session for: $DESCRIPTION"
         # Update current sessions
         update_current_session "$SESSION_FILE" "active" "$DESCRIPTION"
         
-        echo "✅ Started session: $SESSION_FILE"
+        echo -e "\n📄 New Session Created"        
+        echo "   Session: $SESSION_FILE"
+        echo "   Project: $PROJECT"
+        echo "   Branch:  $BRANCH"
+        echo -e "\n📝 Initial Content:"
+        head -n 5 "$SESSIONS_DIR/$SESSION_FILE" | sed 's/^/   /'
         echo "   Agent: $AGENT_ID"
         echo "   Project: $PROJECT"
         echo "   Branch: $BRANCH"
@@ -94,7 +99,7 @@ Starting new session for: $DESCRIPTION"
         
         if [[ -z "$CURRENT_SESSION" ]]; then
             echo "Error: No active session found for agent $AGENT_ID"
-            echo "Start a new session with: claude-session start <description>"
+            echo "Start a new session with: claude-sessions start <description>"
             exit 1
         fi
         
@@ -105,7 +110,18 @@ Starting new session for: $DESCRIPTION"
         TASKS=$(grep -A1 "### Agent: $AGENT_ID" "$CURRENT_SESSIONS_FILE" | grep "Tasks:" | cut -d' ' -f2-)
         update_current_session "$CURRENT_SESSION" "active" "$TASKS"
         
-        echo "✅ Updated session: $CURRENT_SESSION"
+        echo -e "\n📝 Updating Session"
+        echo "   Session: $CURRENT_SESSION"
+        
+        # Show what was added
+        echo -e "\n   Added Update:"
+        echo "   $MESSAGE" | fold -w 60 | sed 's/^/   /'
+        
+        # Show confirmation of latest content
+        echo -e "\n   Latest Updates:"
+        tail -n 5 "$SESSIONS_DIR/$CURRENT_SESSION" | sed 's/^/   /'
+        
+        echo -e "\n✅ Update Complete"
         ;;
         
     status)
@@ -217,7 +233,15 @@ Completed at: $(date -u +%Y-%m-%dT%H:%M:%SZ)" true
         AGENT_ID=$(get_agent_id)
         update_current_session "$SESSION_FILE" "active" "Resumed session"
         
-        echo "✅ Switched to session: $SESSION_FILE"
+        echo -e "\n🔄 Switching Session"        
+        echo "   From: $CURRENT_SESSION"
+        echo "   To:   $SESSION_FILE"
+        
+        # Show session details
+        echo -e "\n📄 Session Details:"
+        grep -E "^\*\*(Project|Branch)\*\*:" "$SESSIONS_DIR/$SESSION_FILE" | sed 's/^\*\*/   /; s/\*\*:/:/' 
+        
+        echo -e "\n✅ Switch Complete"
         ;;
         
     *)
