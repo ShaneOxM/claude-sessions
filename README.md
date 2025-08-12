@@ -1,16 +1,16 @@
 # Claude Session Manager
 
-A powerful session management system for Claude Code that tracks development sessions across multiple projects, branches, and Claude instances.
+A powerful hybrid session management system for Claude Code that combines project-local storage with global visibility. Sessions stay with their projects while maintaining cross-project awareness.
 
 ## Features
 
-- 🔄 **Multi-Agent Support**: Track sessions across multiple Claude chats
-- 🌿 **Branch-Aware**: Sessions are tracked per git branch
-- 📁 **Project Isolation**: Each project maintains its own sessions
-- 🔒 **Git Safety**: Prevents unsafe `git add -A` operations
-- 🏗️ **Build Validation**: Optional build checks before git push
-- 📊 **Session History**: Complete history of all development sessions
-- 🔍 **Easy Discovery**: Find and continue previous sessions
+- 📁 **Project-Local Sessions**: Sessions stored in `PROJECT/.claude/sessions/`
+- 🌍 **Global Index**: Cross-project visibility via global index
+- ⚡ **Instant Lookup**: No complex searching, just read local files
+- 🔄 **Multi-Agent Support**: Track sessions across multiple Claude instances
+- 🌿 **Branch-Aware**: Each git branch gets its own session
+- 📊 **Session History**: Complete history with backups
+- 🔍 **Easy Discovery**: Find sessions locally or globally
 
 ## Installation
 
@@ -50,9 +50,10 @@ claude-sessions status
 
 #### In Claude Code
 Use these slash commands:
-- `/continue` - Browse and continue previous sessions
-- `/session list` - Quick list of current project sessions
-- `/session` - Interactive session picker
+- `/continue` - Browse and continue sessions from any project
+- `/session` - Manage current project's sessions
+- `/update <message>` - Quick update to current session
+- `/complete` - Mark sessions as completed
 
 #### End of Session
 ```bash
@@ -77,10 +78,36 @@ git checkout feature/payments
 claude-sessions status  # Shows: Session for payments branch (different session!)
 ```
 
-### Global Storage, Project Filtering
-- Sessions stored globally in `~/.claude/sessions/`
-- Automatically filtered by current project and branch
-- Access all your work history across all projects
+### Hybrid Architecture
+- **Local Storage**: Sessions live in `PROJECT/.claude/sessions/`
+- **Global Index**: `~/.claude/sessions/.global-index` tracks all projects
+- **Fast Access**: Current session in `.claude/sessions/.current-session`
+- **Portable**: Sessions travel with projects (can be committed if desired)
+
+## Architecture
+
+### Where Sessions Live
+```
+my-project/
+  .claude/
+    sessions/
+      2025-08-12-1030-feature-auth.md    # Actual session content
+      2025-08-12-0900-bug-fix.md         # Previous session
+      .current-session                    # Points to active: "2025-08-12-1030-feature-auth.md"
+      backups/                            # Auto-backups of sessions
+
+~/.claude/
+  sessions/
+    .global-index                         # Index of all projects' sessions
+    .current-sessions                     # Legacy global tracker (kept for compatibility)
+```
+
+### Benefits of Hybrid Approach
+- ✅ **No searching**: Direct file reads, no complex AWK patterns
+- ✅ **Project isolation**: Sessions stay with their code
+- ✅ **Global visibility**: See all work via global index
+- ✅ **Committable**: Optionally commit sessions with project
+- ✅ **Fast**: Instant session lookups
 
 ## Configuration
 
@@ -88,8 +115,9 @@ claude-sessions status  # Shows: Session for payments branch (different session!
 The installer creates:
 - `~/.claude/hooks/` - Hook scripts
 - `~/.claude/bin/` - CLI tools
-- `~/.claude/sessions/` - Session storage
+- `~/.claude/sessions/` - Global index and legacy storage
 - `~/.claude/settings.json` - Hook configuration
+- `PROJECT/.claude/sessions/` - Local session storage (per project)
 
 ### Optional Features
 
