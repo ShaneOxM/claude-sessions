@@ -6,6 +6,27 @@ source ~/.claude/hooks/session-manager.sh 2>/dev/null || {
     exit 1
 }
 
+# Get project-local session
+get_project_session() {
+    local project_dir="${1:-$(pwd)}"
+    local current_session_file="$project_dir/.claude/sessions/.current-session"
+    
+    # Check new location first
+    if [[ -f "$current_session_file" ]]; then
+        cat "$current_session_file"
+    # Check old location for backwards compatibility
+    elif [[ -f "$project_dir/.claude/.current-session" ]]; then
+        cat "$project_dir/.claude/.current-session"
+    else
+        echo ""
+    fi
+}
+
+# Get local sessions directory
+get_local_sessions_dir() {
+    echo "$(pwd)/.claude/sessions"
+}
+
 print_usage() {
     cat << EOF
 Claude Sessions Management
@@ -65,8 +86,16 @@ $DESCRIPTION
 ## Current Work
 Starting new session for: $DESCRIPTION"
         
-        # Update current sessions
+        # Update current sessions (legacy)
         update_current_session "$SESSION_FILE" "active" "$DESCRIPTION"
+        
+        # Update global index
+        update_global_index "$PROJECT" "$SESSION_FILE" "active"
+        
+        # Create project-local current session pointer
+        local local_sessions_dir="$(get_local_sessions_dir)"
+        mkdir -p "$local_sessions_dir"
+        echo "$SESSION_FILE" > "$local_sessions_dir/.current-session"
         
         echo -e "\n📄 New Session Created"        
         echo "   Session: $SESSION_FILE"
@@ -101,10 +130,15 @@ Starting new session for: $DESCRIPTION"
         
         # If no session specified, find the right one
         if [[ -z "$CURRENT_SESSION" ]]; then
-            # Find the most recent ACTIVE session for this agent, project, and branch
-            # Collect all matching sessions and pick the one with the latest timestamp
-            # Find all active sessions for this agent/project/branch
-            CURRENT_SESSION=$(grep -A7 "^### Agent: $AGENT_ID" "$CURRENT_SESSIONS_FILE" | \
+            # Try project-local cache first (instant lookup)
+            CURRENT_SESSION=$(get_project_session)
+            
+            # If not found locally, fall back to AWK search
+            if [[ -z "$CURRENT_SESSION" ]]; then
+                # Find the most recent ACTIVE session for this agent, project, and branch
+                # Collect all matching sessions and pick the one with the latest timestamp
+                # Find all active sessions for this agent/project/branch
+                CURRENT_SESSION=$(grep -A7 "^### Agent: $AGENT_ID" "$CURRENT_SESSIONS_FILE" | \
                 awk -v project="$PROJECT_PATH" -v branch="$CURRENT_BRANCH" '
                 BEGIN { RS="--"; FS="\n" }
                 {
@@ -114,11 +148,19 @@ Starting new session for: $DESCRIPTION"
                             session = $i
                             gsub(/^- Session: /, "", session)
                         }
-                        else if ($i ~ /^- Project:/ && $i ~ project) {
-                            has_project = 1
+                        else if ($i ~ /^- Project:/) {
+                            proj = $i
+                            gsub(/^- Project: /, "", proj)
+                            if (proj == project) {
+                                has_project = 1
+                            }
                         }
-                        else if ($i ~ /^- Branch:/ && $i ~ branch) {
-                            has_branch = 1
+                        else if ($i ~ /^- Branch:/) {
+                            br = $i
+                            gsub(/^- Branch: /, "", br)
+                            if (br == branch) {
+                                has_branch = 1
+                            }
                         }
                         else if ($i ~ /^- Started:/) {
                             started = $i
@@ -132,6 +174,7 @@ Starting new session for: $DESCRIPTION"
                         print started "|" session
                     }
                 }' | sort -r | head -n1 | cut -d'|' -f2)
+            fi
         fi
         
         if [[ -z "$CURRENT_SESSION" ]]; then
@@ -145,8 +188,18 @@ Starting new session for: $DESCRIPTION"
             exit 1
         fi
         
-        # Append to session file
+        # Append to session file (now local)
         update_session_file "$CURRENT_SESSION" "$MESSAGE" true
+        
+        # Update global index timestamp
+        update_global_index "$PROJECT_PATH" "$CURRENT_SESSION" "active"
+        
+        # Ensure local current session pointer exists
+        local local_sessions_dir="$(get_local_sessions_dir)"
+        if [[ ! -f "$local_sessions_dir/.current-session" ]]; then
+            mkdir -p "$local_sessions_dir"
+            echo "$CURRENT_SESSION" > "$local_sessions_dir/.current-session"
+        fi
         
         # Note: We don't need to call update_current_session here since the session already exists
         # and we're just appending to the file, not changing its metadata
@@ -159,8 +212,9 @@ Starting new session for: $DESCRIPTION"
         echo "   $MESSAGE" | fold -w 60 | sed 's/^/   /'
         
         # Show confirmation of latest content
+        local local_sessions_dir="$(get_local_sessions_dir)"
         echo -e "\n   Latest Updates:"
-        tail -n 5 "$SESSIONS_DIR/$CURRENT_SESSION" | sed 's/^/   /'
+        tail -n 5 "$local_sessions_dir/$CURRENT_SESSION" | sed 's/^/   /'
         
         echo -e "\n✅ Update Complete"
         ;;
@@ -173,39 +227,63 @@ Starting new session for: $DESCRIPTION"
         echo "Agent: $AGENT_ID"
         echo "Project: $PROJECT_PATH"
         echo "Branch: $CURRENT_BRANCH"
-        echo ""
         
-        if [[ -f "$CURRENT_SESSIONS_FILE" ]]; then
-            # Find sessions for current agent, project, and branch
-            awk -v agent="$AGENT_ID" -v project="$PROJECT_PATH" -v branch="$CURRENT_BRANCH" '
-                /^### Agent:/ && $0 ~ agent { in_agent=1; print_block=0 }
-                in_agent && /^- Project:/ && $0 ~ project { has_project=1 }
-                in_agent && /^- Branch:/ && $0 ~ branch { if(has_project) print_block=1 }
-                in_agent && print_block { print }
-                /^$/ || /^### Agent:/ || /^## Session History/ { 
-                    in_agent=0; has_project=0; print_block=0 
-                }
-            ' "$CURRENT_SESSIONS_FILE"
+        # Check for local current session
+        local local_sessions_dir="$(get_local_sessions_dir)"
+        local current_file="$local_sessions_dir/.current-session"
+        
+        if [[ -f "$current_file" ]]; then
+            local session_name=$(cat "$current_file")
+            echo "Current Session: $session_name"
+            
+            # Show session summary if file exists
+            if [[ -f "$local_sessions_dir/$session_name" ]]; then
+                echo ""
+                echo "Session Summary:"
+                head -10 "$local_sessions_dir/$session_name" | grep -E "^##|^- " | sed 's/^/  /'
+            fi
         else
-            echo "No active sessions found"
+            echo "No active session in this project"
+            echo ""
+            echo "Start a new session with: claude-sessions start <description>"
         fi
         ;;
         
     list)
-        if [[ -f "$CURRENT_SESSIONS_FILE" ]]; then
-            echo "Active Sessions:"
-            echo "───────────────"
-            grep -E "^### Agent:|^- Session:|^- Status:" "$CURRENT_SESSIONS_FILE" | \
-            while IFS= read -r line; do
-                if [[ "$line" =~ ^###\ Agent: ]]; then
-                    echo ""
-                    echo "$line"
-                else
-                    echo "  $line"
+        # Show local sessions first
+        local local_sessions_dir="$(get_local_sessions_dir)"
+        echo "📁 Local Sessions ($(basename $(pwd))):"
+        echo "────────────────────────"
+        
+        if [[ -d "$local_sessions_dir" ]]; then
+            local current_session=$(cat "$local_sessions_dir/.current-session" 2>/dev/null)
+            for session in "$local_sessions_dir"/*.md; do
+                if [[ -f "$session" ]]; then
+                    local name=$(basename "$session")
+                    if [[ "$name" == "$current_session" ]]; then
+                        echo "  ⭐ $name (current)"
+                    else
+                        echo "     $name"
+                    fi
                 fi
             done
         else
-            echo "No sessions found"
+            echo "  No local sessions"
+        fi
+        
+        echo ""
+        echo "🌍 Global Sessions (all projects):"
+        echo "──────────────────────────────"
+        
+        if [[ -f "$GLOBAL_INDEX_FILE" ]]; then
+            tail -n +3 "$GLOBAL_INDEX_FILE" | while IFS='|' read -r project session agent branch status timestamp; do
+                echo "  📂 $(basename "$project")"
+                echo "     Session: $session"
+                echo "     Branch: $branch | Status: $status"
+                echo ""
+            done
+        else
+            echo "  No global index found"
         fi
         ;;
         
@@ -256,6 +334,13 @@ Starting new session for: $DESCRIPTION"
         update_session_file "$CURRENT_SESSION" "## Session Completed
 Completed at: $(date -u +%Y-%m-%dT%H:%M:%SZ)" true
         
+        # Update global index
+        update_global_index "$PROJECT_PATH" "$CURRENT_SESSION" "completed"
+        
+        # Remove project-local current session pointer
+        local local_sessions_dir="$(get_local_sessions_dir)"
+        rm -f "$local_sessions_dir/.current-session"
+        
         echo "✅ Completed session: $CURRENT_SESSION"
         ;;
         
@@ -266,13 +351,24 @@ Completed at: $(date -u +%Y-%m-%dT%H:%M:%SZ)" true
             exit 1
         fi
         
-        if [[ ! -f "$SESSIONS_DIR/$SESSION_FILE" ]]; then
+        local local_sessions_dir="$(get_local_sessions_dir)"
+        if [[ ! -f "$local_sessions_dir/$SESSION_FILE" ]]; then
             echo "Error: Session file not found: $SESSION_FILE"
+            echo "Looking in: $local_sessions_dir"
             exit 1
         fi
         
         AGENT_ID=$(get_agent_id)
+        PROJECT_PATH=$(pwd)
         update_current_session "$SESSION_FILE" "active" "Resumed session"
+        
+        # Update global index
+        update_global_index "$PROJECT_PATH" "$SESSION_FILE" "active"
+        
+        # Update project-local current session pointer
+        local local_sessions_dir="$(get_local_sessions_dir)"
+        mkdir -p "$local_sessions_dir"
+        echo "$SESSION_FILE" > "$local_sessions_dir/.current-session"
         
         echo -e "\n🔄 Switching Session"        
         echo "   From: $CURRENT_SESSION"
@@ -280,7 +376,7 @@ Completed at: $(date -u +%Y-%m-%dT%H:%M:%SZ)" true
         
         # Show session details
         echo -e "\n📄 Session Details:"
-        grep -E "^\*\*(Project|Branch)\*\*:" "$SESSIONS_DIR/$SESSION_FILE" | sed 's/^\*\*/   /; s/\*\*:/:/' 
+        grep -E "^\*\*(Project|Branch)\*\*:" "$local_sessions_dir/$SESSION_FILE" | sed 's/^\*\*/   /; s/\*\*:/:/' 
         
         echo -e "\n✅ Switch Complete"
         ;;
