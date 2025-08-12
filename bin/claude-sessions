@@ -151,7 +151,7 @@ Starting new session for: $DESCRIPTION"
         # Note: We don't need to call update_current_session here since the session already exists
         # and we're just appending to the file, not changing its metadata
         
-        echo -e "\n📝 Updating Session"
+        echo -e "\n✅ Updated Session"
         echo "   Session: $CURRENT_SESSION"
         
         # Show what was added
