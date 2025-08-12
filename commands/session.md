@@ -56,7 +56,8 @@ case "$COMMAND" in
             echo "Please provide an update message"
             echo "Usage: /session update <message>"
         else
-            claude-sessions update "$MESSAGE"
+            OUTPUT=$(claude-sessions update "$MESSAGE" 2>&1)
+            echo "$OUTPUT"
         fi
         ;;
         

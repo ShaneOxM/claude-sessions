@@ -16,9 +16,6 @@ Update the current active session with a progress message.
 
 ```bash
 #!/bin/bash
-# Update command - adds progress update to current session
-
-# Join all arguments as the update message
 MESSAGE="$*"
 
 if [[ -z "$MESSAGE" ]]; then
@@ -29,6 +26,8 @@ if [[ -z "$MESSAGE" ]]; then
     exit 1
 fi
 
-# Call claude-sessions update
-claude-sessions update "$MESSAGE"
+OUTPUT=$(claude-sessions update "$MESSAGE" 2>&1)
+RESULT=$?
+echo "$OUTPUT"
+exit $RESULT
 ```
