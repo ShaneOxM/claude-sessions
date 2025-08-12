@@ -3,8 +3,19 @@
 # Session Management Helper Functions
 # Used by various hooks to maintain session state
 
-SESSIONS_DIR="$HOME/.claude/sessions"
-CURRENT_SESSIONS_FILE="$SESSIONS_DIR/.current-sessions"
+# Global locations for index
+GLOBAL_SESSIONS_DIR="$HOME/.claude/sessions"
+GLOBAL_INDEX_FILE="$GLOBAL_SESSIONS_DIR/.global-index"
+
+# Local sessions are in PROJECT/.claude/sessions/
+# This function gets the local sessions directory
+get_local_sessions_dir() {
+    echo "$(pwd)/.claude/sessions"
+}
+
+# Legacy support
+SESSIONS_DIR="$GLOBAL_SESSIONS_DIR"  # For backwards compatibility
+CURRENT_SESSIONS_FILE="$GLOBAL_SESSIONS_DIR/.current-sessions"  # Legacy global tracker
 SESSION_UPDATE_INTERVAL=300  # 5 minutes
 
 # Get agent identifier (from environment or default)
@@ -32,6 +43,37 @@ generate_session_name() {
     local timestamp=$(date +%Y-%m-%d-%H%M)
     local sanitized_desc=$(echo "$task_desc" | tr ' ' '-' | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9-]//g')
     echo "${timestamp}-${sanitized_desc}.md"
+}
+
+# Update global index with project session info
+update_global_index() {
+    local project_path="$1"
+    local session_file="$2"
+    local status="${3:-active}"
+    local agent_id=$(get_agent_id)
+    local branch=$(get_git_branch)
+    local timestamp=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+    
+    # Ensure global directory exists
+    mkdir -p "$GLOBAL_SESSIONS_DIR"
+    
+    # Create index file if it doesn't exist
+    if [[ ! -f "$GLOBAL_INDEX_FILE" ]]; then
+        cat > "$GLOBAL_INDEX_FILE" << EOF
+# Global Session Index
+# Format: PROJECT|SESSION|AGENT|BRANCH|STATUS|TIMESTAMP
+EOF
+    fi
+    
+    # Remove old entry for this project/agent/branch if exists
+    local temp_file="${GLOBAL_INDEX_FILE}.tmp"
+    grep -v "^${project_path}|.*|${agent_id}|${branch}|" "$GLOBAL_INDEX_FILE" > "$temp_file" || true
+    
+    # Add new entry
+    echo "${project_path}|${session_file}|${agent_id}|${branch}|${status}|${timestamp}" >> "$temp_file"
+    
+    # Sort and update
+    mv "$temp_file" "$GLOBAL_INDEX_FILE"
 }
 
 # Update or create session entry in .current-sessions
@@ -203,7 +245,12 @@ update_session_file() {
     local content="$2"
     local append="${3:-false}"
     
-    local full_path="$SESSIONS_DIR/$session_file"
+    # Use local sessions directory
+    local local_sessions_dir="$(get_local_sessions_dir)"
+    local full_path="$local_sessions_dir/$session_file"
+    
+    # Ensure local sessions directory exists
+    mkdir -p "$local_sessions_dir"
     
     # Load config for backup settings
     local config_file="$HOME/.claude/session-config"
@@ -213,7 +260,7 @@ update_session_file() {
     
     # Defaults
     local keep_backups="${SESSION_KEEP_BACKUPS:-true}"
-    local backup_dir="${SESSION_BACKUP_DIR:-$SESSIONS_DIR/backups}"
+    local backup_dir="${SESSION_BACKUP_DIR:-$local_sessions_dir/backups}"
     local backup_count="${SESSION_BACKUP_COUNT:-10}"
     
     # Create backup if file exists and backups are enabled
