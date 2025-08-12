@@ -1,0 +1,125 @@
+#!/bin/bash
+# Auto-update session with configurable interval
+
+# Source session manager functions
+source ~/.claude/hooks/session-manager.sh 2>/dev/null || {
+    echo "Error: Session manager not found" >&2
+    exit 1
+}
+
+# Configuration file for session settings
+CONFIG_FILE="$HOME/.claude/session-config"
+SESSIONS_DIR="$HOME/.claude/sessions"
+CURRENT_SESSIONS_FILE="$SESSIONS_DIR/.current-sessions"
+
+# Load configuration or use defaults
+if [[ -f "$CONFIG_FILE" ]]; then
+    source "$CONFIG_FILE"
+fi
+
+# Default values
+SESSION_UPDATE_INTERVAL="${SESSION_UPDATE_INTERVAL:-360}"  # Default 6 minutes
+SESSION_AUTO_UPDATE="${SESSION_AUTO_UPDATE:-true}"
+SESSION_SHOW_UPDATES="${SESSION_SHOW_UPDATES:-true}"
+SESSION_UPDATE_PREFIX="${SESSION_UPDATE_PREFIX:-[Auto-update]}"
+
+# Check if auto-updates are enabled
+if [[ "$SESSION_AUTO_UPDATE" != "true" ]]; then
+    exit 0
+fi
+
+# Get current context
+AGENT_ID=$(get_agent_id)
+PROJECT_PATH=$(get_project_path)
+CURRENT_BRANCH=$(get_git_branch)
+
+# Find active session for current context
+CURRENT_SESSION=$(awk -v agent="$AGENT_ID" -v project="$PROJECT_PATH" -v branch="$CURRENT_BRANCH" '
+    BEGIN { RS=""; FS="\n" }
+    /^### Agent:/ && $0 ~ agent {
+        session=""; is_active=0; has_project=0; has_branch=0; last_update=""
+        for (i=1; i<=NF; i++) {
+            if ($i ~ /^- Session:/) {
+                session = $i
+                gsub(/^- Session: /, "", session)
+            }
+            else if ($i ~ /^- Project:/ && $i ~ project) {
+                has_project = 1
+            }
+            else if ($i ~ /^- Branch:/ && $i ~ branch) {
+                has_branch = 1
+            }
+            else if ($i ~ /^- Status: active/) {
+                is_active = 1
+            }
+            else if ($i ~ /^- Last Update:/) {
+                last_update = $i
+                gsub(/^- Last Update: /, "", last_update)
+            }
+        }
+        if (has_project && has_branch && is_active && session != "") {
+            print session "|" last_update
+            exit
+        }
+    }
+' "$CURRENT_SESSIONS_FILE")
+
+if [[ -z "$CURRENT_SESSION" ]]; then
+    exit 0  # No active session to update
+fi
+
+IFS='|' read -r SESSION_FILE LAST_UPDATE <<< "$CURRENT_SESSION"
+
+# Check if update is needed based on interval
+if [[ -n "$LAST_UPDATE" ]]; then
+    # Convert timestamps to epoch
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+        # macOS date command
+        last_epoch=$(date -j -f "%Y-%m-%dT%H:%M:%SZ" "$LAST_UPDATE" +%s 2>/dev/null || echo 0)
+    else
+        # Linux date command
+        last_epoch=$(date -d "$LAST_UPDATE" +%s 2>/dev/null || echo 0)
+    fi
+    
+    current_epoch=$(date +%s)
+    diff=$((current_epoch - last_epoch))
+    
+    if [[ $diff -lt $SESSION_UPDATE_INTERVAL ]]; then
+        exit 0  # Too soon for update
+    fi
+fi
+
+# Gather context for update
+UPDATE_MESSAGE="$SESSION_UPDATE_PREFIX Activity in $(basename "$PROJECT_PATH") on branch $CURRENT_BRANCH"
+
+# Check for recent git changes
+if command -v git &> /dev/null && git rev-parse --git-dir > /dev/null 2>&1; then
+    # Get recent commit count
+    RECENT_COMMITS=$(git log --oneline -n 5 --since="$SESSION_UPDATE_INTERVAL seconds ago" 2>/dev/null | wc -l | xargs)
+    
+    # Get file changes
+    CHANGED_FILES=$(git status --porcelain 2>/dev/null | wc -l | xargs)
+    
+    if [[ $RECENT_COMMITS -gt 0 ]] || [[ $CHANGED_FILES -gt 0 ]]; then
+        UPDATE_MESSAGE="$SESSION_UPDATE_PREFIX"
+        if [[ $RECENT_COMMITS -gt 0 ]]; then
+            UPDATE_MESSAGE="$UPDATE_MESSAGE $RECENT_COMMITS recent commit(s)"
+        fi
+        if [[ $CHANGED_FILES -gt 0 ]]; then
+            if [[ $RECENT_COMMITS -gt 0 ]]; then
+                UPDATE_MESSAGE="$UPDATE_MESSAGE,"
+            fi
+            UPDATE_MESSAGE="$UPDATE_MESSAGE $CHANGED_FILES uncommitted change(s)"
+        fi
+    fi
+fi
+
+# Update the session
+claude-sessions update "$SESSION_FILE" "$UPDATE_MESSAGE" 2>/dev/null
+
+# Show update to user if configured
+if [[ "$SESSION_SHOW_UPDATES" == "true" ]]; then
+    echo "📝 Session auto-updated: $UPDATE_MESSAGE" >&2
+    echo "   To disable: echo 'SESSION_AUTO_UPDATE=false' >> ~/.claude/session-config" >&2
+    echo "   To change interval: echo 'SESSION_UPDATE_INTERVAL=300' >> ~/.claude/session-config" >&2
+fi

@@ -1,0 +1,199 @@
+#!/bin/bash
+# Revert session to previous state
+
+SESSIONS_DIR="$HOME/.claude/sessions"
+BACKUP_DIR="$SESSIONS_DIR/backups"
+CONFIG_FILE="$HOME/.claude/session-config"
+CURRENT_SESSIONS_FILE="$SESSIONS_DIR/.current-sessions"
+
+# Load configuration
+if [[ -f "$CONFIG_FILE" ]]; then
+    source "$CONFIG_FILE"
+fi
+
+# Defaults
+SESSION_KEEP_BACKUPS="${SESSION_KEEP_BACKUPS:-true}"
+BACKUP_DIR="${SESSION_BACKUP_DIR:-$SESSIONS_DIR/backups}"
+
+# Source session manager functions
+source ~/.claude/hooks/session-manager.sh 2>/dev/null || {
+    echo "Error: Session manager not found"
+    exit 1
+}
+
+# Get arguments
+SESSION_ARG="$1"
+STEPS_BACK="${2:-1}"
+
+# Function to list backups for a session
+list_backups() {
+    local session_file="$1"
+    local session_base=$(basename "$session_file" .md)
+    
+    if [[ ! -d "$BACKUP_DIR" ]]; then
+        echo "No backups found (backup directory doesn't exist)"
+        return 1
+    fi
+    
+    ls -t "$BACKUP_DIR/${session_base}"*.md 2>/dev/null
+}
+
+# Function to revert session
+revert_session() {
+    local session_file="$1"
+    local steps_back="$2"
+    
+    # Get list of backups
+    local backups=($(list_backups "$session_file"))
+    
+    if [[ ${#backups[@]} -eq 0 ]]; then
+        echo "❌ No backups found for session: $session_file"
+        return 1
+    fi
+    
+    if [[ $steps_back -gt ${#backups[@]} ]]; then
+        echo "❌ Only ${#backups[@]} backup(s) available, cannot revert $steps_back steps"
+        return 1
+    fi
+    
+    # Select backup to restore
+    local backup_to_restore="${backups[$((steps_back - 1))]}"
+    local current_file="$SESSIONS_DIR/$session_file"
+    
+    # Create backup of current state before reverting
+    local timestamp=$(date +%Y%m%d-%H%M%S)
+    local session_base=$(basename "$session_file" .md)
+    local pre_revert_backup="$BACKUP_DIR/${session_base}-pre-revert-${timestamp}.md"
+    
+    mkdir -p "$BACKUP_DIR"
+    cp "$current_file" "$pre_revert_backup"
+    
+    # Restore the backup
+    cp "$backup_to_restore" "$current_file"
+    
+    echo "✅ Reverted session: $session_file"
+    echo "   Restored from: $(basename "$backup_to_restore")"
+    echo "   Current state backed up to: $(basename "$pre_revert_backup")"
+    
+    # Show diff if available
+    if command -v diff &> /dev/null; then
+        echo ""
+        echo "Changes reverted:"
+        echo "────────────────"
+        diff --suppress-common-lines "$current_file" "$pre_revert_backup" 2>/dev/null | head -20 || true
+    fi
+}
+
+# Main logic
+if [[ -z "$SESSION_ARG" ]]; then
+    # List current session and its backups
+    AGENT_ID=$(get_agent_id)
+    PROJECT_PATH=$(get_project_path)
+    CURRENT_BRANCH=$(get_git_branch)
+    
+    # Find active session
+    CURRENT_SESSION=$(awk -v agent="$AGENT_ID" -v project="$PROJECT_PATH" -v branch="$CURRENT_BRANCH" '
+        BEGIN { RS=""; FS="\n" }
+        /^### Agent:/ && $0 ~ agent {
+            session=""; is_active=0; has_project=0; has_branch=0
+            for (i=1; i<=NF; i++) {
+                if ($i ~ /^- Session:/) {
+                    session = $i
+                    gsub(/^- Session: /, "", session)
+                }
+                else if ($i ~ /^- Project:/ && $i ~ project) {
+                    has_project = 1
+                }
+                else if ($i ~ /^- Branch:/ && $i ~ branch) {
+                    has_branch = 1
+                }
+                else if ($i ~ /^- Status: active/) {
+                    is_active = 1
+                }
+            }
+            if (has_project && has_branch && is_active && session != "") {
+                print session
+                exit
+            }
+        }
+    ' "$CURRENT_SESSIONS_FILE")
+    
+    if [[ -z "$CURRENT_SESSION" ]]; then
+        echo "No active session found for current project/branch"
+        exit 1
+    fi
+    
+    echo "📂 Current Session: $CURRENT_SESSION"
+    echo ""
+    echo "Available backups:"
+    echo "─────────────────"
+    
+    backups=($(list_backups "$CURRENT_SESSION"))
+    if [[ ${#backups[@]} -eq 0 ]]; then
+        echo "  No backups available"
+    else
+        for i in "${!backups[@]}"; do
+            backup_file="${backups[$i]}"
+            backup_name=$(basename "$backup_file")
+            backup_time=$(echo "$backup_name" | grep -oE '[0-9]{8}-[0-9]{6}' | head -1)
+            echo "  $((i + 1)). $backup_time"
+        done
+    fi
+    
+    echo ""
+    echo "Usage:"
+    echo "  session-revert <session-file> [steps-back]"
+    echo "  session-revert current [steps-back]"
+    echo ""
+    echo "Example:"
+    echo "  session-revert current 1    # Revert current session 1 step back"
+    
+elif [[ "$SESSION_ARG" == "current" ]]; then
+    # Revert current session
+    AGENT_ID=$(get_agent_id)
+    PROJECT_PATH=$(get_project_path)
+    CURRENT_BRANCH=$(get_git_branch)
+    
+    # Find active session
+    CURRENT_SESSION=$(awk -v agent="$AGENT_ID" -v project="$PROJECT_PATH" -v branch="$CURRENT_BRANCH" '
+        BEGIN { RS=""; FS="\n" }
+        /^### Agent:/ && $0 ~ agent {
+            session=""; is_active=0; has_project=0; has_branch=0
+            for (i=1; i<=NF; i++) {
+                if ($i ~ /^- Session:/) {
+                    session = $i
+                    gsub(/^- Session: /, "", session)
+                }
+                else if ($i ~ /^- Project:/ && $i ~ project) {
+                    has_project = 1
+                }
+                else if ($i ~ /^- Branch:/ && $i ~ branch) {
+                    has_branch = 1
+                }
+                else if ($i ~ /^- Status: active/) {
+                    is_active = 1
+                }
+            }
+            if (has_project && has_branch && is_active && session != "") {
+                print session
+                exit
+            }
+        }
+    ' "$CURRENT_SESSIONS_FILE")
+    
+    if [[ -z "$CURRENT_SESSION" ]]; then
+        echo "❌ No active session found for current project/branch"
+        exit 1
+    fi
+    
+    revert_session "$CURRENT_SESSION" "$STEPS_BACK"
+    
+else
+    # Revert specific session file
+    if [[ ! -f "$SESSIONS_DIR/$SESSION_ARG" ]]; then
+        echo "❌ Session file not found: $SESSION_ARG"
+        exit 1
+    fi
+    
+    revert_session "$SESSION_ARG" "$STEPS_BACK"
+fi
