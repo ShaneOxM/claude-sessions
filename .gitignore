@@ -17,10 +17,23 @@ Thumbs.db
 test/
 tmp/
 
+# Test scripts (not for distribution)
+test-*.sh
+cleanup-*.sh
+cleanup_sessions.py
+check-*.sh
+sync-local.sh
+update-local.sh
+tweet.md
+
 # Local configurations
 .env
 config.local.json
 .mcp.json
+
+# Project-local session cache (should not be committed)
+.claude/.current-session
+.claude/
 
 # Documentation (local only)
 docs/
