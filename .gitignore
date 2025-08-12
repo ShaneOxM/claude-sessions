@@ -25,6 +25,7 @@ check-*.sh
 sync-local.sh
 update-local.sh
 tweet.md
+local-scripts/
 
 # Local configurations
 .env

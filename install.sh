@@ -52,11 +52,29 @@ for tool in claude-sessions continue-session complete-session session-auto-updat
     fi
 done
 
-# Install commands
+# Install commands (using symlinks for auto-updates)
 echo "📝 Installing Claude commands..."
 if [ -d "$SCRIPT_DIR/commands" ]; then
-    cp -r "$SCRIPT_DIR/commands/"* "$CLAUDE_DIR/commands/" 2>/dev/null || true
-    echo "   ✓ Commands installed"
+    for cmd_file in "$SCRIPT_DIR/commands"/*.md; do
+        if [[ -f "$cmd_file" ]]; then
+            cmd_name=$(basename "$cmd_file")
+            # Remove existing file if it's not a symlink
+            if [ -f "$CLAUDE_DIR/commands/$cmd_name" ] && [ ! -L "$CLAUDE_DIR/commands/$cmd_name" ]; then
+                rm -f "$CLAUDE_DIR/commands/$cmd_name"
+            fi
+            # Create symlink
+            ln -sf "$cmd_file" "$CLAUDE_DIR/commands/$cmd_name"
+            echo "   ✓ /$(basename "$cmd_name" .md) linked"
+        fi
+    done
+fi
+
+# Install migration utility for cleaning up existing sessions
+echo "🔄 Installing migration utilities..."
+if [ -f "$SCRIPT_DIR/utils/migrate-to-hybrid.sh" ]; then
+    cp "$SCRIPT_DIR/utils/migrate-to-hybrid.sh" "$CLAUDE_DIR/bin/claude-migrate-sessions"
+    chmod +x "$CLAUDE_DIR/bin/claude-migrate-sessions"
+    echo "   ✓ Session migration utility installed"
 fi
 
 # Update or create settings.json
@@ -177,6 +195,10 @@ fi
 
 echo ""
 echo "✅ Installation complete!"
+echo ""
+echo "💡 Recommended: Clean up existing sessions"
+echo "   If you have existing sessions, run this command to migrate them:"
+echo "   claude-migrate-sessions"
 echo ""
 echo "🎯 Quick Start:"
 echo "   1. Restart your terminal or run: source $SHELL_RC"
