@@ -44,13 +44,13 @@ echo "   ✓ tool-pre-bash.sh"
 
 # Install CLI tools
 echo "🛠️  Installing CLI tools..."
-cp "$SCRIPT_DIR/bin/claude-sessions" "$CLAUDE_DIR/bin/"
-chmod +x "$CLAUDE_DIR/bin/claude-sessions"
-echo "   ✓ claude-sessions"
-
-cp "$SCRIPT_DIR/bin/claude-sessions-sync" "$CLAUDE_DIR/bin/"
-chmod +x "$CLAUDE_DIR/bin/claude-sessions-sync"
-echo "   ✓ claude-sessions-sync"
+for tool in claude-sessions continue-session complete-session session-auto-update session-revert claude-sessions-sync; do
+    if [ -f "$SCRIPT_DIR/bin/$tool" ]; then
+        cp "$SCRIPT_DIR/bin/$tool" "$CLAUDE_DIR/bin/"
+        chmod +x "$CLAUDE_DIR/bin/$tool"
+        echo "   ✓ $tool"
+    fi
+done
 
 # Install commands
 echo "📝 Installing Claude commands..."
