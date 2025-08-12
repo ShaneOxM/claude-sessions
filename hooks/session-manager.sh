@@ -64,85 +64,134 @@ EOF
     # Clean session filename - remove any "Session: " prefixes
     session_file=$(echo "$session_file" | sed 's/^Session: //' | sed 's/^Session: //' | sed 's/^Session: //')
     
-    # Update the file - first remove any existing entry for this agent/project combo
+    # Use awk to process the file and update/add the session
     local temp_file="${CURRENT_SESSIONS_FILE}.tmp"
-    > "$temp_file"  # Clear temp file
     
-    # First pass: remove existing entries for this agent/project/branch combo
-    awk -v agent="$agent_id" -v project="$project_path" -v branch="$branch" '
-        BEGIN { skip = 0; in_block = 0 }
-        /^### Agent:/ { 
-            if (skip > 0) skip = 0
-            if ($0 ~ agent) {
-                in_block = 1
-                has_project = 0
-                has_branch = 0
+    awk -v agent="$agent_id" -v session="$session_file" -v project="$project_path" \
+        -v branch="$branch" -v status="$status" -v tasks="$tasks" -v ts="$timestamp" '
+    BEGIN {
+        found = 0
+        in_block = 0
+        skip_block = 0
+    }
+    /^### Agent:/ {
+        if (skip_block) {
+            skip_block--
+            next
+        }
+        if ($0 ~ "### Agent: " agent) {
+            # This is our agent, check if it matches project/branch
+            in_block = 1
+            agent_line = $0
+            block_project = ""
+            block_branch = ""
+            block_started = ""
+            block_lines[0] = $0
+            line_count = 1
+        } else {
+            in_block = 0
+            print
+        }
+        next
+    }
+    in_block {
+        block_lines[line_count++] = $0
+        
+        if (/^- Project:/) {
+            gsub(/^- Project: /, "")
+            block_project = $0
+        } else if (/^- Branch:/) {
+            gsub(/^- Branch: /, "")
+            block_branch = $0
+        } else if (/^- Started:/) {
+            gsub(/^- Started: /, "")
+            block_started = $0
+        } else if (/^$/ || /^### Agent:/ || /^## Session History/) {
+            # End of block - decide what to do
+            if (block_project == project && block_branch == branch) {
+                # This is our block - replace it
+                if (!found) {
+                    print "### Agent: " agent
+                    print "- Session: " session
+                    print "- Project: " project
+                    print "- Branch: " branch
+                    # Preserve original start time if it exists
+                    if (block_started != "") {
+                        print "- Started: " block_started
+                    } else {
+                        print "- Started: " ts
+                    }
+                    print "- Last Update: " ts
+                    print "- Status: " status
+                    print "- Tasks: " tasks
+                    print ""
+                    found = 1
+                }
+                # Skip the original block
             } else {
-                in_block = 0
-            }
-        }
-        in_block && /^- Project:/ { 
-            if ($0 ~ project) {
-                has_project = 1
-            }
-        }
-        in_block && /^- Branch:/ {
-            if ($0 ~ branch) {
-                has_branch = 1
-                if (has_project) {
-                    skip = 4  # Skip rest of this block
+                # Not our block - print it as-is
+                for (i = 0; i < line_count; i++) {
+                    print block_lines[i]
                 }
             }
-        }
-        in_block && /^$|^### Agent:|^## Session History/ {
             in_block = 0
-            has_project = 0
-            has_branch = 0
+            
+            # Handle the current line if its a section header
+            if (/^### Agent:/ || /^## Session History/) {
+                skip_block = 0
+                if (/^## Session History/ && !found) {
+                    # Add new session before history
+                    print "### Agent: " agent
+                    print "- Session: " session  
+                    print "- Project: " project
+                    print "- Branch: " branch
+                    print "- Started: " ts
+                    print "- Last Update: " ts
+                    print "- Status: " status
+                    print "- Tasks: " tasks
+                    print ""
+                    found = 1
+                }
+                print
+            }
         }
-        skip > 0 { skip--; next }
-        { print }
+        next
+    }
+    /^## Session History/ {
+        if (!found) {
+            # Add new session before history
+            print "### Agent: " agent
+            print "- Session: " session
+            print "- Project: " project
+            print "- Branch: " branch
+            print "- Started: " ts
+            print "- Last Update: " ts
+            print "- Status: " status
+            print "- Tasks: " tasks
+            print ""
+            found = 1
+        }
+        print
+        next
+    }
+    { print }
+    END {
+        if (!found) {
+            # Add at end if no history section
+            print ""
+            print "### Agent: " agent
+            print "- Session: " session
+            print "- Project: " project
+            print "- Branch: " branch
+            print "- Started: " ts
+            print "- Last Update: " ts
+            print "- Status: " status
+            print "- Tasks: " tasks
+        }
+    }
     ' "$CURRENT_SESSIONS_FILE" > "$temp_file"
     
-    # Second pass: add new entry before Session History
-    local final_file="${CURRENT_SESSIONS_FILE}.final"
-    local added=false
-    
-    while IFS= read -r line; do
-        if [[ "$line" =~ ^##\ Session\ History ]] && ! $added; then
-            # Add new entry
-            cat >> "$final_file" << EOF
-### Agent: $agent_id
-- Session: $session_file
-- Project: $project_path
-- Branch: $branch
-- Started: $timestamp
-- Last Update: $timestamp
-- Status: $status
-- Tasks: $tasks
-
-EOF
-            added=true
-        fi
-        echo "$line" >> "$final_file"
-    done < "$temp_file"
-    
-    # If no Session History section, append at end
-    if ! $added; then
-        cat >> "$final_file" << EOF
-
-### Agent: $agent_id
-- Session: $session_file
-- Project: $project_path
-- Branch: $branch
-- Started: $timestamp
-- Last Update: $timestamp
-- Status: $status
-- Tasks: $tasks
-EOF
-    fi
-    
-    mv "$final_file" "$CURRENT_SESSIONS_FILE"
-    rm -f "$temp_file"
+    mv "$temp_file" "$CURRENT_SESSIONS_FILE"
     
     # Update timestamp at top
     sed -i '' "s/^# Last Updated:.*/# Last Updated: $timestamp/" "$CURRENT_SESSIONS_FILE"
@@ -155,6 +204,34 @@ update_session_file() {
     local append="${3:-false}"
     
     local full_path="$SESSIONS_DIR/$session_file"
+    
+    # Load config for backup settings
+    local config_file="$HOME/.claude/session-config"
+    if [[ -f "$config_file" ]]; then
+        source "$config_file"
+    fi
+    
+    # Defaults
+    local keep_backups="${SESSION_KEEP_BACKUPS:-true}"
+    local backup_dir="${SESSION_BACKUP_DIR:-$SESSIONS_DIR/backups}"
+    local backup_count="${SESSION_BACKUP_COUNT:-10}"
+    
+    # Create backup if file exists and backups are enabled
+    if [[ "$keep_backups" == "true" ]] && [[ -f "$full_path" ]]; then
+        mkdir -p "$backup_dir"
+        local session_base=$(basename "$session_file" .md)
+        local timestamp=$(date +%Y%m%d-%H%M%S)
+        local backup_file="$backup_dir/${session_base}-${timestamp}.md"
+        cp "$full_path" "$backup_file"
+        
+        # Clean old backups (keep only last N)
+        local backups=($(ls -t "$backup_dir/${session_base}"*.md 2>/dev/null))
+        if [[ ${#backups[@]} -gt $backup_count ]]; then
+            for ((i=$backup_count; i<${#backups[@]}; i++)); do
+                rm "${backups[$i]}"
+            done
+        fi
+    fi
     
     if [[ "$append" == "true" ]] && [[ -f "$full_path" ]]; then
         echo -e "\n## Update: $(date -u +%Y-%m-%dT%H:%M:%SZ)\n$content" >> "$full_path"
