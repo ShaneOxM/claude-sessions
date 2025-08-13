@@ -227,6 +227,122 @@ claude-sessions status  # Shows all your notes
 - Check permissions: `chmod +x ~/.claude/hooks/*.sh`
 - Review settings: `cat ~/.claude/settings.json`
 
+## Development
+
+### Symlink Architecture
+
+The installation uses symlinks for instant updates during development:
+
+```
+Your Repository                    Claude's Directory
+──────────────                    ─────────────────
+commands/                          ~/.claude/commands/
+  ├── continue.md    <───────────── continue.md (symlink)
+  ├── complete.md    <───────────── complete.md (symlink)  
+  ├── session.md     <───────────── session.md (symlink)
+  └── update.md      <───────────── update.md (symlink)
+```
+
+**Benefits:**
+- **Instant local updates** - Edit in your local repo, changes are live immediately
+- **No sync needed** - Commands update automatically via symlinks
+- **Single source** - One file to maintain, no copying
+- **Git-friendly** - All changes tracked in your repository
+
+**Important:** Symlinks point to your LOCAL repository, not GitHub. To get updates:
+```bash
+cd claude-session-manager  # wherever you cloned it
+git pull upstream main      # pull from original repo
+# Commands update instantly via symlinks
+./sync-to-local.sh         # Only needed for bin/ and hooks/
+```
+
+### Development Workflow
+
+1. **Fork and clone:**
+   ```bash
+   # Fork the repo on GitHub first, then:
+   git clone https://github.com/YOUR_USERNAME/claude-sessions.git
+   cd claude-session-manager
+   
+   # Set upstream to original repo for updates
+   git remote add upstream https://github.com/ShaneOxM/claude-sessions.git
+   
+   # Install
+   ./install.sh
+   ```
+
+2. **Edit commands (instant updates via symlinks):**
+   ```bash
+   # Edit with your preferred editor (VSCode, Cursor, vim, etc.)
+   code commands/continue.md  # or cursor, vim, nano, etc.
+   # Changes are immediately live - no sync needed!
+   ```
+
+3. **Edit scripts (requires sync):**
+   ```bash
+   # Edit with your preferred editor
+   code bin/claude-sessions
+   ./sync-to-local.sh  # Quick sync for non-symlinked files
+   ```
+
+### File Types
+
+| File Type | Location | Update Method |
+|-----------|----------|---------------|
+| Commands (*.md) | `commands/` | Instant via symlinks |
+| Scripts | `bin/` | Run `./sync-to-local.sh` |
+| Hooks | `hooks/` | Run `./sync-to-local.sh` |
+| Utils | `utils/` | Run `./sync-to-local.sh` |
+
+### Quick Sync Script
+
+For non-symlinked files, use the sync script:
+```bash
+./sync-to-local.sh
+# Updates: claude-sessions, hooks, utilities
+```
+
+### Testing Changes
+
+```bash
+# Test commands instantly (symlinked)
+/continue
+/session status
+
+# Test scripts after sync
+./sync-to-local.sh
+claude-sessions status
+```
+
+### Keeping Up-to-Date
+
+The symlinks point to your **local repository**, not GitHub directly:
+
+```
+~/.claude/commands/continue.md → /path/to/your/claude-session-manager/commands/continue.md
+                                  ↑
+                            YOUR LOCAL REPO (not GitHub)
+```
+
+To get updates from the original repository:
+```bash
+# 1. Navigate to your local clone
+cd claude-session-manager
+
+# 2. Pull latest changes from upstream
+git pull upstream main
+
+# 3. Commands update instantly (symlinked)
+# 4. Sync other files if needed
+./sync-to-local.sh  # Updates bin/, hooks/, utils/
+```
+
+**No drift possible** because:
+- Symlinks always point to your local repo
+- You control when to pull updates from GitHub
+- Local edits are preserved until you commit/pull
+
 ## Contributing
 
 Contributions are welcome! Please:
