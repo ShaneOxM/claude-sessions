@@ -76,6 +76,7 @@ case "$COMMAND" in
 **Agent**: $AGENT_ID
 **Project**: $PROJECT
 **Branch**: $BRANCH
+**Status**: active
 
 ## Summary
 $DESCRIPTION
@@ -93,7 +94,7 @@ Starting new session for: $DESCRIPTION"
         update_global_index "$PROJECT" "$SESSION_FILE" "active"
         
         # Create project-local current session pointer
-        local local_sessions_dir="$(get_local_sessions_dir)"
+        local_sessions_dir="$(get_local_sessions_dir)"
         mkdir -p "$local_sessions_dir"
         echo "$SESSION_FILE" > "$local_sessions_dir/.current-session"
         
@@ -195,7 +196,7 @@ Starting new session for: $DESCRIPTION"
         update_global_index "$PROJECT_PATH" "$CURRENT_SESSION" "active"
         
         # Ensure local current session pointer exists
-        local local_sessions_dir="$(get_local_sessions_dir)"
+        local_sessions_dir="$(get_local_sessions_dir)"
         if [[ ! -f "$local_sessions_dir/.current-session" ]]; then
             mkdir -p "$local_sessions_dir"
             echo "$CURRENT_SESSION" > "$local_sessions_dir/.current-session"
@@ -212,7 +213,7 @@ Starting new session for: $DESCRIPTION"
         echo "   $MESSAGE" | fold -w 60 | sed 's/^/   /'
         
         # Show confirmation of latest content
-        local local_sessions_dir="$(get_local_sessions_dir)"
+        local_sessions_dir="$(get_local_sessions_dir)"
         echo -e "\n   Latest Updates:"
         tail -n 5 "$local_sessions_dir/$CURRENT_SESSION" | sed 's/^/   /'
         
@@ -229,11 +230,11 @@ Starting new session for: $DESCRIPTION"
         echo "Branch: $CURRENT_BRANCH"
         
         # Check for local current session
-        local local_sessions_dir="$(get_local_sessions_dir)"
-        local current_file="$local_sessions_dir/.current-session"
+        local_sessions_dir="$(get_local_sessions_dir)"
+        current_file="$local_sessions_dir/.current-session"
         
         if [[ -f "$current_file" ]]; then
-            local session_name=$(cat "$current_file")
+            session_name=$(cat "$current_file")
             echo "Current Session: $session_name"
             
             # Show session summary if file exists
@@ -251,24 +252,49 @@ Starting new session for: $DESCRIPTION"
         
     list)
         # Show local sessions first
-        local local_sessions_dir="$(get_local_sessions_dir)"
-        echo "📁 Local Sessions ($(basename $(pwd))):"
+        local_sessions_dir="$(get_local_sessions_dir)"
+        echo "📁 Active Sessions ($(basename $(pwd))):"
         echo "────────────────────────"
         
         if [[ -d "$local_sessions_dir" ]]; then
-            local current_session=$(cat "$local_sessions_dir/.current-session" 2>/dev/null)
+            current_session=$(cat "$local_sessions_dir/.current-session" 2>/dev/null)
+            session_found=false
             for session in "$local_sessions_dir"/*.md; do
                 if [[ -f "$session" ]]; then
-                    local name=$(basename "$session")
+                    name=$(basename "$session")
                     if [[ "$name" == "$current_session" ]]; then
                         echo "  ⭐ $name (current)"
                     else
                         echo "     $name"
                     fi
+                    session_found=true
                 fi
             done
+            if [[ "$session_found" == "false" ]]; then
+                echo "  No active sessions"
+            fi
         else
-            echo "  No local sessions"
+            echo "  No active sessions"
+        fi
+        
+        # Show archived sessions
+        echo ""
+        echo "📦 Archived Sessions:"
+        echo "────────────────────"
+        archive_dir="$local_sessions_dir/archive"
+        if [[ -d "$archive_dir" ]]; then
+            archive_count=0
+            for session in "$archive_dir"/*.md; do
+                if [[ -f "$session" ]]; then
+                    echo "     $(basename "$session")"
+                    ((archive_count++))
+                fi
+            done
+            if [[ $archive_count -eq 0 ]]; then
+                echo "  No archived sessions"
+            fi
+        else
+            echo "  No archived sessions"
         fi
         
         echo ""
@@ -330,6 +356,9 @@ Starting new session for: $DESCRIPTION"
         # Mark as completed
         update_current_session "$CURRENT_SESSION" "completed" "$CURRENT_TASKS - COMPLETED"
         
+        # Update session status to completed
+        update_session_status "$CURRENT_SESSION" "completed"
+        
         # Add completion note to session file
         update_session_file "$CURRENT_SESSION" "## Session Completed
 Completed at: $(date -u +%Y-%m-%dT%H:%M:%SZ)" true
@@ -337,8 +366,18 @@ Completed at: $(date -u +%Y-%m-%dT%H:%M:%SZ)" true
         # Update global index
         update_global_index "$PROJECT_PATH" "$CURRENT_SESSION" "completed"
         
+        # Archive the completed session
+        local_sessions_dir="$(get_local_sessions_dir)"
+        archive_dir="$local_sessions_dir/archive"
+        mkdir -p "$archive_dir"
+        
+        # Move session file to archive
+        if [[ -f "$local_sessions_dir/$CURRENT_SESSION" ]]; then
+            mv "$local_sessions_dir/$CURRENT_SESSION" "$archive_dir/"
+            echo "   📦 Session archived to: archive/$CURRENT_SESSION"
+        fi
+        
         # Remove project-local current session pointer
-        local local_sessions_dir="$(get_local_sessions_dir)"
         rm -f "$local_sessions_dir/.current-session"
         
         echo "✅ Completed session: $CURRENT_SESSION"
@@ -351,22 +390,31 @@ Completed at: $(date -u +%Y-%m-%dT%H:%M:%SZ)" true
             exit 1
         fi
         
-        local local_sessions_dir="$(get_local_sessions_dir)"
+        local_sessions_dir="$(get_local_sessions_dir)"
         if [[ ! -f "$local_sessions_dir/$SESSION_FILE" ]]; then
             echo "Error: Session file not found: $SESSION_FILE"
             echo "Looking in: $local_sessions_dir"
             exit 1
         fi
         
+        # Get current session to mark as inactive
+        OLD_SESSION=$(cat "$local_sessions_dir/.current-session" 2>/dev/null)
+        if [[ -n "$OLD_SESSION" ]] && [[ "$OLD_SESSION" != "$SESSION_FILE" ]]; then
+            # Update old session status to inactive
+            update_session_status "$OLD_SESSION" "inactive"
+        fi
+        
         AGENT_ID=$(get_agent_id)
         PROJECT_PATH=$(pwd)
         update_current_session "$SESSION_FILE" "active" "Resumed session"
+        
+        # Update new session status to active
+        update_session_status "$SESSION_FILE" "active"
         
         # Update global index
         update_global_index "$PROJECT_PATH" "$SESSION_FILE" "active"
         
         # Update project-local current session pointer
-        local local_sessions_dir="$(get_local_sessions_dir)"
         mkdir -p "$local_sessions_dir"
         echo "$SESSION_FILE" > "$local_sessions_dir/.current-session"
         

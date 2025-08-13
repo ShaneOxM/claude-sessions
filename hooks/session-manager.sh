@@ -287,6 +287,30 @@ update_session_file() {
     fi
 }
 
+# Update session status in file header
+update_session_status() {
+    local session_file="$1"
+    local new_status="$2"
+    
+    # Use local sessions directory
+    local local_sessions_dir="$(get_local_sessions_dir)"
+    local full_path="$local_sessions_dir/$session_file"
+    
+    if [[ ! -f "$full_path" ]]; then
+        return 1
+    fi
+    
+    # Check if Status field exists
+    if grep -q "^\*\*Status\*\*:" "$full_path"; then
+        # Update existing status
+        sed -i '' "s/^\*\*Status\*\*: .*/\*\*Status\*\*: $new_status/" "$full_path"
+    else
+        # Add Status field after Branch line
+        sed -i '' "/^\*\*Branch\*\*:/a\\
+**Status**: $new_status" "$full_path"
+    fi
+}
+
 # Check if session needs update (based on time)
 needs_session_update() {
     local agent_id=$(get_agent_id)

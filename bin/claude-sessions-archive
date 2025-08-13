@@ -1,0 +1,240 @@
+#!/bin/bash
+
+# Claude Sessions Archive Management
+# Manage archived sessions - clean, restore, or view
+
+source ~/.claude/hooks/session-manager.sh 2>/dev/null || {
+    echo "Error: Session manager not found"
+    exit 1
+}
+
+print_usage() {
+    cat << EOF
+Claude Sessions Archive Management
+
+Usage: claude-sessions-archive <command> [options]
+
+Commands:
+  clean [days]      Remove archives older than N days (default: 30)
+  restore <file>    Restore an archived session to active
+  list              List all archived sessions
+  stats             Show archive statistics
+  auto              Archive all inactive sessions
+
+Examples:
+  claude-sessions-archive clean 60       # Remove archives older than 60 days
+  claude-sessions-archive restore 2025-08-01-session.md
+  claude-sessions-archive auto           # Archive inactive sessions
+EOF
+}
+
+# Get archive directory for current project
+get_archive_dir() {
+    echo "$(get_local_sessions_dir)/archive"
+}
+
+# Archive inactive sessions
+archive_inactive() {
+    local local_sessions_dir="$(get_local_sessions_dir)"
+    local archive_dir="$(get_archive_dir)"
+    local count=0
+    
+    echo "🔍 Scanning for inactive sessions..."
+    
+    # Check global index for inactive sessions in this project
+    local project_path=$(pwd)
+    
+    if [[ -f "$GLOBAL_INDEX_FILE" ]]; then
+        while IFS='|' read -r project session agent branch status timestamp; do
+            if [[ "$project" == "$project_path" ]] && [[ "$status" == "inactive" || "$status" == "completed" ]]; then
+                local session_file="$local_sessions_dir/$session"
+                
+                if [[ -f "$session_file" ]]; then
+                    mkdir -p "$archive_dir"
+                    mv "$session_file" "$archive_dir/"
+                    echo "  📦 Archived: $session"
+                    ((count++))
+                fi
+            fi
+        done < <(tail -n +3 "$GLOBAL_INDEX_FILE")
+    fi
+    
+    if [[ $count -eq 0 ]]; then
+        echo "  No inactive sessions to archive"
+    else
+        echo "✅ Archived $count session(s)"
+    fi
+}
+
+# Clean old archives
+clean_archives() {
+    local days="${1:-30}"
+    local archive_dir="$(get_archive_dir)"
+    local count=0
+    
+    if [[ ! -d "$archive_dir" ]]; then
+        echo "No archive directory found"
+        return
+    fi
+    
+    echo "🧹 Cleaning archives older than $days days..."
+    
+    # Find and remove old archives
+    while IFS= read -r file; do
+        if [[ -f "$file" ]]; then
+            rm "$file"
+            echo "  🗑️  Removed: $(basename "$file")"
+            ((count++))
+        fi
+    done < <(find "$archive_dir" -name "*.md" -type f -mtime +$days 2>/dev/null)
+    
+    if [[ $count -eq 0 ]]; then
+        echo "  No old archives to clean"
+    else
+        echo "✅ Removed $count old archive(s)"
+    fi
+}
+
+# Restore archived session
+restore_session() {
+    local session_file="$1"
+    local archive_dir="$(get_archive_dir)"
+    local local_sessions_dir="$(get_local_sessions_dir)"
+    
+    if [[ -z "$session_file" ]]; then
+        echo "Error: Please specify a session file to restore"
+        return 1
+    fi
+    
+    local archived_file="$archive_dir/$session_file"
+    
+    if [[ ! -f "$archived_file" ]]; then
+        echo "Error: Archive not found: $session_file"
+        return 1
+    fi
+    
+    # Move back to active sessions
+    mv "$archived_file" "$local_sessions_dir/"
+    
+    # Update global index
+    update_global_index "$(pwd)" "$session_file" "inactive"
+    
+    echo "✅ Restored session: $session_file"
+    echo "   Use 'claude-sessions switch $session_file' to make it active"
+}
+
+# List archived sessions
+list_archives() {
+    local archive_dir="$(get_archive_dir)"
+    
+    echo "📦 Archived Sessions in $(basename $(pwd)):"
+    echo "──────────────────────────────────"
+    
+    if [[ ! -d "$archive_dir" ]]; then
+        echo "  No archive directory"
+        return
+    fi
+    
+    local count=0
+    for session in "$archive_dir"/*.md; do
+        if [[ -f "$session" ]]; then
+            local name=$(basename "$session")
+            local mod_time=$(stat -f "%Sm" -t "%Y-%m-%d %H:%M" "$session" 2>/dev/null || stat -c "%y" "$session" 2>/dev/null | cut -d' ' -f1,2)
+            echo "  📄 $name"
+            echo "     Archived: $mod_time"
+            ((count++))
+        fi
+    done
+    
+    if [[ $count -eq 0 ]]; then
+        echo "  No archived sessions"
+    else
+        echo ""
+        echo "Total: $count archived session(s)"
+    fi
+}
+
+# Show archive statistics
+show_stats() {
+    local archive_dir="$(get_archive_dir)"
+    local local_sessions_dir="$(get_local_sessions_dir)"
+    
+    echo "📊 Session Statistics for $(basename $(pwd))"
+    echo "════════════════════════════════════"
+    
+    # Count active sessions
+    local active_count=0
+    if [[ -d "$local_sessions_dir" ]]; then
+        for session in "$local_sessions_dir"/*.md; do
+            [[ -f "$session" ]] && ((active_count++))
+        done
+    fi
+    
+    # Count archived sessions
+    local archive_count=0
+    local archive_size=0
+    if [[ -d "$archive_dir" ]]; then
+        for session in "$archive_dir"/*.md; do
+            if [[ -f "$session" ]]; then
+                ((archive_count++))
+                local size=$(stat -f%z "$session" 2>/dev/null || stat -c%s "$session" 2>/dev/null)
+                archive_size=$((archive_size + size))
+            fi
+        done
+    fi
+    
+    # Calculate oldest and newest archives
+    local oldest=""
+    local newest=""
+    if [[ $archive_count -gt 0 ]]; then
+        oldest=$(ls -t "$archive_dir"/*.md 2>/dev/null | tail -1 | xargs basename)
+        newest=$(ls -t "$archive_dir"/*.md 2>/dev/null | head -1 | xargs basename)
+    fi
+    
+    echo "  Active sessions:    $active_count"
+    echo "  Archived sessions:  $archive_count"
+    echo "  Archive size:       $(echo "scale=2; $archive_size / 1024" | bc) KB"
+    
+    if [[ -n "$oldest" ]]; then
+        echo ""
+        echo "  Oldest archive:     $oldest"
+        echo "  Newest archive:     $newest"
+    fi
+    
+    # Current session
+    if [[ -f "$local_sessions_dir/.current-session" ]]; then
+        echo ""
+        echo "  Current session:    $(cat "$local_sessions_dir/.current-session")"
+    fi
+}
+
+# Main command processing
+COMMAND="$1"
+shift
+
+case "$COMMAND" in
+    clean)
+        clean_archives "$1"
+        ;;
+        
+    restore)
+        restore_session "$1"
+        ;;
+        
+    list)
+        list_archives
+        ;;
+        
+    stats)
+        show_stats
+        ;;
+        
+    auto)
+        archive_inactive
+        ;;
+        
+    *)
+        print_usage
+        exit 1
+        ;;
+esac
