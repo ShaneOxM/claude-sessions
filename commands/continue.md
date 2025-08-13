@@ -19,8 +19,8 @@ Continue a previous session using numbered selection.
 #!/bin/bash
 # Continue command - shows sessions and handles selection
 
-# Call the continue-session script
-OUTPUT=$($HOME/code/os-repos/claude-session-manager/bin/continue-session "$@" 2>&1)
+# Call the continue-session script from installed location
+OUTPUT=$(~/.claude/bin/continue-session "$@" 2>&1)
 
 # Display the output
 echo "$OUTPUT"
