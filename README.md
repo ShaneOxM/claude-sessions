@@ -140,12 +140,12 @@ claude-sessions switch <session>      # Switch to different session
 claude-sessions-sync                  # Sync local sessions to global
 ```
 
-### Claude Commands
+### Claude Commands (Slash Commands)
 ```
-/continue [session-name]             # List or continue sessions
-/project:session-start <desc>        # Start new session
-/project:session-update              # Update session
-/project:session-end                 # End session
+/continue [number]                  # List or continue sessions by number
+/session [status|list|update]       # Manage current session
+/update <message>                   # Quick update to current session
+/complete [numbers]                 # Mark sessions as completed
 ```
 
 ## Architecture
