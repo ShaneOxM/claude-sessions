@@ -1,0 +1,23 @@
+# Claude Session Manager Configuration
+# Copy this file to ~/.claude/session-config and customize
+
+# Auto-update settings
+SESSION_AUTO_UPDATE=true                    # Enable/disable automatic session updates
+SESSION_UPDATE_INTERVAL=360                 # Update interval in seconds (default: 6 minutes)
+SESSION_SHOW_UPDATES=true                   # Show update notifications to user
+SESSION_UPDATE_PREFIX="[Auto-update]"       # Prefix for auto-update messages
+
+# Session behavior
+SESSION_AUTO_START=true                     # Automatically start session when claude starts
+SESSION_AUTO_COMPLETE_IDLE=false            # Auto-complete sessions after idle period
+SESSION_IDLE_TIMEOUT=3600                   # Idle timeout in seconds (1 hour)
+
+# Revert functionality
+SESSION_KEEP_BACKUPS=true                   # Keep backups before updates
+SESSION_BACKUP_COUNT=10                     # Number of backups to keep per session
+SESSION_BACKUP_DIR="$HOME/.claude/sessions/backups"  # Backup directory
+
+# Display options
+SESSION_SHOW_SUMMARY=true                   # Show session summary on continue
+SESSION_TRUNCATE_UPDATES=true               # Truncate long update messages
+SESSION_MAX_UPDATE_LENGTH=100               # Maximum update message length

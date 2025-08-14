@@ -1,0 +1,21 @@
+{
+  "env": {
+    "SESSION_AUTO_UPDATE": "true",
+    "SESSION_UPDATE_INTERVAL": "360",
+    "SESSION_SHOW_UPDATES": "true",
+    "ENABLE_BACKGROUND_TASKS": "1",
+    "FORCE_AUTO_BACKGROUND_TASKS": "1"
+  },
+  "hooks": {
+    "PreToolUse": {
+      "Bash": "$HOME/code/os-repos/claude-session-manager/hooks/auto-update-hook.sh"
+    }
+  },
+  "permissions": {
+    "allow": [
+      "Bash($HOME/code/os-repos/claude-session-manager/bin/*)",
+      "Read($HOME/.claude/sessions/**)",
+      "Write($HOME/.claude/sessions/**)"
+    ]
+  }
+}
