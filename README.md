@@ -243,6 +243,7 @@ The installation uses symlinks for instant updates during development:
 Your Repository                    Claude's Directory
 ──────────────                    ─────────────────
 commands/                          ~/.claude/commands/
+  ├── start.md       <───────────── start.md (symlink)
   ├── continue.md    <───────────── continue.md (symlink)
   ├── complete.md    <───────────── complete.md (symlink)  
   ├── session.md     <───────────── session.md (symlink)
