@@ -26,7 +26,42 @@ if [[ -z "$MESSAGE" ]]; then
     exit 1
 fi
 
-OUTPUT=$("$HOME/.claude/bin/claude-sessions" update "$MESSAGE" 2>&1)
+# Auto-generate summary of recent changes
+AUTO_SUMMARY=""
+if git rev-parse --git-dir > /dev/null 2>&1; then
+    # Get recent commits
+    RECENT_COMMITS=$(git log --oneline -1 2>/dev/null | cut -d' ' -f2-)
+    
+    # Count files changed in last commit
+    FILES_CHANGED=$(git diff --name-only HEAD~1 2>/dev/null | wc -l | tr -d ' ')
+    
+    # Get key file names (first 3)
+    KEY_FILES=$(git diff --name-only HEAD~1 2>/dev/null | head -3 | xargs -I {} basename {} | tr '\n' ',' | sed 's/,$//' | sed 's/,/, /g')
+    
+    if [[ -n "$RECENT_COMMITS" ]] || [[ "$FILES_CHANGED" -gt 0 ]]; then
+        AUTO_SUMMARY=" ✨ "
+        if [[ -n "$RECENT_COMMITS" ]]; then
+            AUTO_SUMMARY="${AUTO_SUMMARY}${RECENT_COMMITS}"
+        fi
+        if [[ "$FILES_CHANGED" -gt 0 ]]; then
+            AUTO_SUMMARY="${AUTO_SUMMARY} (${FILES_CHANGED} files"
+            if [[ -n "$KEY_FILES" ]] && [[ "$FILES_CHANGED" -le 3 ]]; then
+                AUTO_SUMMARY="${AUTO_SUMMARY}: ${KEY_FILES}"
+            fi
+            AUTO_SUMMARY="${AUTO_SUMMARY})"
+        fi
+    fi
+fi
+
+# Combine user message with auto-summary
+FULL_MESSAGE="${MESSAGE}${AUTO_SUMMARY}"
+
+# Truncate if too long
+if [[ ${#FULL_MESSAGE} -gt 500 ]]; then
+    FULL_MESSAGE="${FULL_MESSAGE:0:497}..."
+fi
+
+OUTPUT=$("$HOME/.claude/bin/claude-sessions" update "$FULL_MESSAGE" 2>&1)
 RESULT=$?
 echo "$OUTPUT"
 exit $RESULT
