@@ -44,7 +44,7 @@ echo "   ✓ tool-pre-bash.sh"
 
 # Install CLI tools
 echo "🛠️  Installing CLI tools..."
-for tool in claude-sessions start-session continue-session complete-session session-auto-update session-revert claude-sessions-sync; do
+for tool in claude-sessions start-session continue-session complete-session session-auto-update session-revert claude-sessions-sync enable-auto-updates disable-auto-updates; do
     if [ -f "$SCRIPT_DIR/bin/$tool" ]; then
         cp "$SCRIPT_DIR/bin/$tool" "$CLAUDE_DIR/bin/"
         chmod +x "$CLAUDE_DIR/bin/$tool"

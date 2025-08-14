@@ -12,6 +12,7 @@ A powerful hybrid session management system for Claude Code that combines projec
 - 📊 **Session History**: Complete history with backups
 - 🔍 **Easy Discovery**: Find sessions locally or globally
 - ✨ **Intelligent Updates**: `/update` auto-generates summaries from git history
+- 🚀 **Auto-Update on Git**: Automatic session updates after commits/pushes (optional)
 
 ## Installation
 
@@ -125,6 +126,30 @@ The installer creates:
 - `~/.claude/settings.json` - Hook configuration
 - `PROJECT/.claude/sessions/` - Local session storage (per project)
 
+## Settings & Features
+
+### Auto-Update Sessions (Background Tasks)
+Automatically update sessions after git commits and pushes with detailed change tracking.
+
+#### Enable Auto-Updates
+```bash
+enable-auto-updates
+```
+This will:
+- ✅ Set `ENABLE_BACKGROUND_TASKS=1` in your shell config
+- ✅ Install git hooks for automatic session updates
+- ✅ Track commits, pushes, file changes, and code statistics
+- ✅ Work with Ctrl+B in Claude Code for background operations
+
+#### Disable Auto-Updates
+```bash
+disable-auto-updates
+```
+This will:
+- ⚠️ Set `ENABLE_BACKGROUND_TASKS=0` (preserves settings)
+- ⚠️ Keep your configuration for easy re-enabling
+- ⚠️ Optionally remove git hooks
+
 ### Optional Features
 
 #### Build Validation
@@ -132,6 +157,14 @@ To enable build validation before git push, ensure your project has a `build` sc
 
 #### Custom Git Rules
 Edit `~/.claude/hooks/tool-pre-bash.sh` to add custom git safety rules.
+
+#### Session Configuration
+Edit `~/.claude/session-config` to customize:
+- `SESSION_AUTO_UPDATE` - Enable/disable auto-updates
+- `SESSION_UPDATE_INTERVAL` - Update frequency (default: 360 seconds)
+- `SESSION_SHOW_UPDATES` - Show update notifications
+- `SESSION_KEEP_BACKUPS` - Enable backup creation
+- `SESSION_BACKUP_COUNT` - Number of backups to keep
 
 ## Commands Reference
 
