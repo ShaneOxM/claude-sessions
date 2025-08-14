@@ -18,12 +18,32 @@ Update the current active session with a progress message.
 #!/bin/bash
 MESSAGE="$*"
 
+# If no message provided, ask Claude to generate one
 if [[ -z "$MESSAGE" ]]; then
-    echo "❌ Error: Please provide an update message"
-    echo ""
-    echo "Usage: /update <message>"
-    echo "Example: /update Implementing user authentication"
-    exit 1
+    if git rev-parse --git-dir > /dev/null 2>&1; then
+        # Show context for Claude to analyze
+        echo "📊 Analyzing recent work to generate update..."
+        echo ""
+        echo "Recent commits:"
+        git log --oneline -5 2>/dev/null
+        echo ""
+        echo "Files changed in last commit:"
+        git diff --name-only HEAD~1 2>/dev/null
+        echo ""
+        echo "Change statistics:"
+        git diff --stat HEAD~1 2>/dev/null
+        echo ""
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        echo "🎯 Claude: Based on the above changes, generate and execute an update for the session."
+        echo "Analyze what was accomplished and create a concise, informative update message."
+        echo "Then run: claude-sessions update \"<your generated message>\""
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        exit 0
+    else
+        echo "❌ Not in a git repository. Please provide an update message:"
+        echo "Usage: /update <message>"
+        exit 1
+    fi
 fi
 
 # Auto-generate summary of recent changes

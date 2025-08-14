@@ -11,6 +11,7 @@ A powerful hybrid session management system for Claude Code that combines projec
 - 🌿 **Branch-Aware**: Each git branch gets its own session
 - 📊 **Session History**: Complete history with backups
 - 🔍 **Easy Discovery**: Find sessions locally or globally
+- ✨ **Intelligent Updates**: `/update` auto-generates summaries from git history
 
 ## Installation
 
@@ -56,7 +57,7 @@ Use these slash commands:
 - `/start <description>` - Start a new session with description
 - `/continue` - Browse and continue sessions from any project
 - `/session` - Manage current project's sessions
-- `/update <message>` - Quick update to current session
+- `/update [message]` - Update session (auto-generates from git if no message)
 - `/complete` - Mark sessions as completed
 
 #### End of Session
@@ -150,7 +151,7 @@ claude-sessions-sync                  # Sync local sessions to global
 /start <description>                # Start new session with description
 /continue [number]                  # List or continue sessions by number
 /session [status|list|update]       # Manage current session
-/update <message>                   # Quick update to current session
+/update [message]                   # Update with auto-summary (or auto-generate if no message)
 /complete [numbers]                 # Mark sessions as completed
 ```
 
