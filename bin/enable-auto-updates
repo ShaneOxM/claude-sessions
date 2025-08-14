@@ -121,44 +121,67 @@ EOF
     chmod +x "$HOOKS_DIR/post-commit"
     echo -e "${GREEN}✓${NC} Installed post-commit hook"
     
-    # Create post-push hook with detailed analysis
-    cat > "$HOOKS_DIR/post-push" << 'EOF'
+    # Create pre-push hook that runs AFTER push completes
+    cat > "$HOOKS_DIR/pre-push" << 'EOF'
 #!/bin/bash
-# Auto-update session with detailed push information
+# Update session AFTER push completes (runs as pre-push but updates after)
 
-# Only run if in Claude Code environment
-if [[ -n "$CLAUDE_SESSION" ]] || [[ -f ".claude/sessions/.current-session" ]]; then
-    # Get push details
-    REMOTE=$1
-    URL=$2
+# Get the remote and URL
+REMOTE="$1"
+URL="$2"
+
+# Function to update session after push
+update_after_push() {
+    # Wait for push to complete
+    sleep 2
     
-    # Get detailed change information
-    COMMITS=$(git log @{u}..HEAD --oneline | wc -l | tr -d ' ')
-    FILES=$(git diff @{u}..HEAD --name-only | wc -l | tr -d ' ')
-    INSERTIONS=$(git diff @{u}..HEAD --stat | tail -1 | grep -o '[0-9]* insertion' | cut -d' ' -f1)
-    DELETIONS=$(git diff @{u}..HEAD --stat | tail -1 | grep -o '[0-9]* deletion' | cut -d' ' -f1)
+    # Get the last commit details
+    LAST_COMMIT=$(git log -1 --pretty=format:"%h %s")
+    COMMIT_MSG=$(git log -1 --pretty=%B | head -1)
+    COMMIT_HASH=$(git rev-parse --short HEAD)
     
-    # Get key changes (new functions, classes, methods)
-    NEW_FUNCTIONS=$(git diff @{u}..HEAD | grep '^+.*function\|^+.*class\|^+.*def' | wc -l | tr -d ' ')
+    # Get detailed file changes
+    FILES_CHANGED=$(git diff HEAD~1 --name-only | wc -l | tr -d ' ')
+    FILE_LIST=$(git diff HEAD~1 --name-only | head -5 | xargs -I {} basename {} | tr '\n' ', ' | sed 's/, $//')
     
-    # Build detailed message
-    MSG="Pushed to $REMOTE: $COMMITS commits, $FILES files"
+    # Get code statistics
+    STATS=$(git diff HEAD~1 --stat | tail -1)
+    INSERTIONS=$(echo "$STATS" | grep -o '[0-9]* insertion' | cut -d' ' -f1)
+    DELETIONS=$(echo "$STATS" | grep -o '[0-9]* deletion' | cut -d' ' -f1)
+    
+    # Get specific code changes
+    NEW_FUNCTIONS=$(git diff HEAD~1 | grep '^+.*\(function\|const\|let\|var\|class\|def\|feat\)' | wc -l | tr -d ' ')
+    
+    # Build comprehensive message
+    MSG="Pushed to $REMOTE: $COMMIT_MSG [$COMMIT_HASH]"
+    
+    if [[ "$FILES_CHANGED" -gt 0 ]]; then
+        MSG="$MSG | Files: $FILE_LIST"
+        if [[ "$FILES_CHANGED" -gt 5 ]]; then
+            MSG="$MSG (+$((FILES_CHANGED - 5)) more)"
+        fi
+    fi
+    
     if [[ -n "$INSERTIONS" ]] || [[ -n "$DELETIONS" ]]; then
-        MSG="$MSG (+${INSERTIONS:-0}/-${DELETIONS:-0} lines)"
-    fi
-    if [[ "$NEW_FUNCTIONS" -gt 0 ]]; then
-        MSG="$MSG, $NEW_FUNCTIONS new functions/methods"
+        MSG="$MSG | Changes: +${INSERTIONS:-0}/-${DELETIONS:-0} lines"
     fi
     
-    # Update session in background
-    (
-        sleep 1
-        claude-sessions update "$MSG" 2>/dev/null &
-    ) &
-fi
+    if [[ "$NEW_FUNCTIONS" -gt 0 ]]; then
+        MSG="$MSG | $NEW_FUNCTIONS new definitions"
+    fi
+    
+    # Update the session
+    claude-sessions update "$MSG" 2>/dev/null
+}
+
+# Run update in background AFTER push
+update_after_push &
+
+# Always allow the push to continue
+exit 0
 EOF
-    chmod +x "$HOOKS_DIR/post-push"
-    echo -e "${GREEN}✓${NC} Installed post-push hook"
+    chmod +x "$HOOKS_DIR/pre-push"
+    echo -e "${GREEN}✓${NC} Installed pre-push hook (updates after push)"
 else
     echo -e "${YELLOW}⚠${NC}  Not in a git repository. Git hooks not installed."
     echo "    Run this script in your project directory to install hooks."
