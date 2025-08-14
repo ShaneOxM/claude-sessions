@@ -143,6 +143,7 @@ claude-sessions-sync                  # Sync local sessions to global
 
 ### Claude Commands (Slash Commands)
 ```
+/start <description>                # Start new session with description
 /continue [number]                  # List or continue sessions by number
 /session [status|list|update]       # Manage current session
 /update <message>                   # Quick update to current session
