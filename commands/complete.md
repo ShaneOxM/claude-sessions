@@ -15,6 +15,6 @@ Complete one or more active sessions using numbered selection.
 #!/bin/bash
 # Complete command - delegates to complete-session script
 
-# Call the complete-session script which handles all the logic
-exec complete-session "$@"
+# Use installed version from ~/.claude/bin
+exec "$HOME/.claude/bin/complete-session" "$@"
 ```

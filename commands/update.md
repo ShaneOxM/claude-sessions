@@ -26,7 +26,7 @@ if [[ -z "$MESSAGE" ]]; then
     exit 1
 fi
 
-OUTPUT=$(claude-sessions update "$MESSAGE" 2>&1)
+OUTPUT=$("$HOME/.claude/bin/claude-sessions" update "$MESSAGE" 2>&1)
 RESULT=$?
 echo "$OUTPUT"
 exit $RESULT

@@ -1,0 +1,59 @@
+#!/bin/bash
+
+# Start Session Command - Start a new session with description
+# Usage: /start <description>
+
+# Source session manager functions
+source ~/.claude/hooks/session-manager.sh 2>/dev/null
+
+# Path to claude-sessions command (use installed version)
+CLAUDE_SESSIONS="${CLAUDE_SESSIONS:-$HOME/.claude/bin/claude-sessions}"
+
+# Color codes
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+CYAN='\033[0;36m'
+RED='\033[0;31m'
+NC='\033[0m' # No Color
+BOLD='\033[1m'
+
+# Get description from arguments
+DESCRIPTION="$*"
+
+# If no description provided, show usage
+if [[ -z "$DESCRIPTION" ]]; then
+    echo -e "${YELLOW}⚡ Start New Session${NC}"
+    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo ""
+    echo -e "${BOLD}Usage:${NC}"
+    echo "  /start <description>"
+    echo ""
+    echo -e "${BOLD}Examples:${NC}"
+    echo "  /start implementing user authentication"
+    echo "  /start fixing payment processing bug"
+    echo "  /start refactoring database layer"
+    echo ""
+    echo -e "${BOLD}Current Status:${NC}"
+    "$CLAUDE_SESSIONS" status
+    exit 0
+fi
+
+# Start the new session
+echo -e "${GREEN}🚀 Starting new session...${NC}"
+echo ""
+
+# Use claude-sessions start command
+OUTPUT=$("$CLAUDE_SESSIONS" start "$DESCRIPTION" 2>&1)
+EXIT_CODE=$?
+
+if [[ $EXIT_CODE -eq 0 ]]; then
+    echo "$OUTPUT"
+    echo ""
+    echo -e "${GREEN}✅ Session started successfully!${NC}"
+    echo -e "${CYAN}Use /update to track progress or /complete when done${NC}"
+else
+    echo -e "${RED}❌ Failed to start session${NC}"
+    echo "$OUTPUT"
+    exit 1
+fi

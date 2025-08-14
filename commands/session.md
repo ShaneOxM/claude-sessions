@@ -23,6 +23,9 @@ Interactive session management for the current project.
 # Source session manager functions
 source ~/.claude/hooks/session-manager.sh 2>/dev/null
 
+# Use installed version
+CLAUDE_SESSIONS="$HOME/.claude/bin/claude-sessions"
+
 COMMAND="${1:-menu}"
 
 case "$COMMAND" in
@@ -31,6 +34,7 @@ case "$COMMAND" in
         echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
         echo ""
         echo "Commands:"
+        echo "  /start <desc>    - Start a new session"
         echo "  /session list    - List all sessions"
         echo "  /session status  - Show current status"
         echo "  /session update  - Update current session"
@@ -38,15 +42,15 @@ case "$COMMAND" in
         echo "  /complete        - Mark sessions as completed"
         echo ""
         # Show current status
-        claude-sessions status
+        "$CLAUDE_SESSIONS" status
         ;;
         
     "list")
-        claude-sessions list
+        "$CLAUDE_SESSIONS" list
         ;;
         
     "status")
-        claude-sessions status
+        "$CLAUDE_SESSIONS" status
         ;;
         
     "update")
@@ -56,7 +60,7 @@ case "$COMMAND" in
             echo "Please provide an update message"
             echo "Usage: /session update <message>"
         else
-            OUTPUT=$(claude-sessions update "$MESSAGE" 2>&1)
+            OUTPUT=$("$CLAUDE_SESSIONS" update "$MESSAGE" 2>&1)
             echo "$OUTPUT"
         fi
         ;;

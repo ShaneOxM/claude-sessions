@@ -50,6 +50,7 @@ claude-sessions status
 
 #### In Claude Code
 Use these slash commands:
+- `/start <description>` - Start a new session with description
 - `/continue` - Browse and continue sessions from any project
 - `/session` - Manage current project's sessions
 - `/update <message>` - Quick update to current session
