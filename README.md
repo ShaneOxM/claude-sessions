@@ -33,8 +33,11 @@ cd my-project
 # See what you were working on
 claude-sessions status
 
-# Or start fresh
+# Start fresh (CLI)
 claude-sessions start "implementing user authentication"
+
+# Or in Claude Code (slash command)
+/start implementing user authentication
 ```
 
 #### During Development
