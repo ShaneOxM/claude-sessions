@@ -31,7 +31,11 @@ add_to_shell_config() {
     
     # Check if already added
     if grep -q "ENABLE_BACKGROUND_TASKS" "$shell_config" 2>/dev/null; then
-        echo -e "${YELLOW}⚠${NC}  Background tasks already configured in $shell_config"
+        # Update existing values from 0 to 1
+        sed -i.tmp 's/export ENABLE_BACKGROUND_TASKS=0/export ENABLE_BACKGROUND_TASKS=1/g' "$shell_config"
+        sed -i.tmp 's/export FORCE_AUTO_BACKGROUND_TASKS=0/export FORCE_AUTO_BACKGROUND_TASKS=1/g' "$shell_config"
+        rm -f "${shell_config}.tmp"
+        echo -e "${GREEN}✓${NC} Enabled background tasks in $shell_config (set to 1)"
     else
         echo "" >> "$shell_config"
         echo "# Claude Session Manager - Background Tasks" >> "$shell_config"
@@ -69,7 +73,14 @@ CLAUDE_SETTINGS="$HOME/.claude/settings.local.json"
 if [[ -f "$CLAUDE_SETTINGS" ]]; then
     # Check if env section exists
     if grep -q "ENABLE_BACKGROUND_TASKS" "$CLAUDE_SETTINGS" 2>/dev/null; then
-        echo -e "${YELLOW}⚠${NC}  Background tasks already in Claude settings"
+        # Update values to "1" if they exist
+        if command -v jq &> /dev/null; then
+            jq '.env.ENABLE_BACKGROUND_TASKS = "1" | .env.FORCE_AUTO_BACKGROUND_TASKS = "1"' "$CLAUDE_SETTINGS" > "$CLAUDE_SETTINGS.tmp" && mv "$CLAUDE_SETTINGS.tmp" "$CLAUDE_SETTINGS"
+        else
+            sed -i.bak 's/"ENABLE_BACKGROUND_TASKS": "0"/"ENABLE_BACKGROUND_TASKS": "1"/g' "$CLAUDE_SETTINGS"
+            sed -i.bak 's/"FORCE_AUTO_BACKGROUND_TASKS": "0"/"FORCE_AUTO_BACKGROUND_TASKS": "1"/g' "$CLAUDE_SETTINGS"
+        fi
+        echo -e "${GREEN}✓${NC} Enabled in Claude settings (set to 1)"
     else
         echo -e "${BLUE}ℹ${NC}  Add these to your $CLAUDE_SETTINGS env section:"
         echo '  "env": {'
