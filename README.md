@@ -119,6 +119,7 @@ my-project/
 The installer creates:
 - `~/.claude/hooks/` - Hook scripts
 - `~/.claude/bin/` - CLI tools
+- `~/.claude/commands/` - Symlinks to slash commands (/start, /continue, /session, /update, /complete)
 - `~/.claude/sessions/` - Global index and legacy storage
 - `~/.claude/settings.json` - Hook configuration
 - `PROJECT/.claude/sessions/` - Local session storage (per project)
